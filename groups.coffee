@@ -1,4 +1,4 @@
-requests = require("./requests")
+requests = require("./requests-myads")
 failedRequest = requests.failedRequest
 successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
