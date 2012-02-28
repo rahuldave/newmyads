@@ -1,2 +1,2 @@
-mkdir -p ../astroexplorer-js
-coffee -o ../astroexplorer-js -c *.coffee
+mkdir -p ../astroexplorer-js/myads
+coffee -o ../astroexplorer-js/myads -c *.coffee
