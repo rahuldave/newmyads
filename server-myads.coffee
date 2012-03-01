@@ -8,12 +8,12 @@ connectutils = connect.utils
 http = require 'http'
 querystring = require 'querystring'
 url = require 'url'
-mustache = require 'mustache'
 fs = require 'fs'
-redis_client = require('redis').createClient()
+redis = require 'redis'
+redis_client = redis.createClient()
 # RedisStore = require('connect-redis')(connect)
 
-requests = require "./requests"
+requests = require "./requests-myads"
 completeRequest = requests.completeRequest
 failedRequest = requests.failedRequest
 successfulRequest = requests.successfulRequest
@@ -21,43 +21,20 @@ ifLoggedIn = requests.ifLoggedIn
 postHandler = requests.postHandler
 postHandlerWithJSON = requests.postHandlerWithJSON
 
-proxy = require "./proxy"
 
 user = require "./user"
 loginUser = user.loginUser
 logoutUser = user.logoutUser
 getUser = user.getUser
 
-views = require "./views"
 
 saved = require "./saved"
 tags = require "./tags"
 groups = require "./groups"
-migration = require('./migration2')
+migration = require('./migration')
 
 config = require("./config").config
 SITEPREFIX = config.SITEPREFIX
-STATICPREFIX = config.STATICPREFIX
-
-solrrouter = connect(
-  connect.router (app) ->
-    app.get '/select', (req, res) ->
-      solroptions =
-        host: config.SOLRHOST
-        path: config.SOLRURL + req.url
-        port: config.SOLRPORT
-      proxy.doProxy solroptions, req, res
-)
-
-solrrouter2 = connect(
-  connect.router (app) ->
-    app.get '/select', (req, res) ->
-      solroptions =
-        host: config.SOLRHOST
-        path: config.SOLRURL + req.url
-        port: config.SOLRPORT2
-      proxy.doProxy solroptions, req, res
-)
 
 ##Only run on the cookiestealer. Then TODO:test
 makeADSJSONPCall = (req, res, next) ->
@@ -85,86 +62,16 @@ doPostWithJSON = (func) ->
   (req, res, next) -> postHandlerWithJSON req, res, func
 # Proxy the call to ADS, setting up the NASA_ADS_ID cookie
 
-doADSProxyHandler = (payload, req, res, next) ->
-  console.log '>> In doADSProxyHandler'
-  console.log ">>    cookies=#{JSON.stringify req.cookies}"
-  console.log ">>    payload=#{payload}"
 
-  ifLoggedIn req, res, (loginid) ->
-    args = JSON.parse payload
-    urlpath = args.urlpath
-    console.log ">>   proxying request: #{urlpath}"
-    opts =
-      host: config.ADSHOST
-      port: 80
-      path: urlpath
-      headers:
-        Cookie: "NASA_ADS_ID=#{req.cookies.nasa_ads_id}"
-
-    proxy.doProxy opts, req, res
-
-doADSProxyHandler2 = (payload, req, res, next) ->
-  console.log '>> In doADSProxyHandler2'
-  console.log ">>    cookies=#{JSON.stringify req.cookies}"
-  console.log ">>    payload=#{payload}"
-
-  args = JSON.parse payload
-  console.log "ARGS", args
-  urlpath = args.urlpath
-  method = args.method ? 'GET'
-  #below must be json encoded hash?
-  data = args.data
-  console.log ">>   proxying request: #{urlpath}"
-  poststring=querystring.stringify(data)
-  opts =
-      host: config.ADSHOST
-      port: 80
-      method: method
-      path: urlpath
-      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': poststring.length}
-  console.log opts
-  console.log poststring
-  proxy.doProxyPost opts, poststring, req, res
-  
-doADSProxy = doPost doADSProxyHandler
-doADSProxy2 = doPost doADSProxyHandler2
 
 # This is just temporary code: could add in a timeout and message
 
-quickRedirect = (newloc) ->
-  (req, res, next) ->
-    res.writeHead 302, 'Redirect', Location: newloc
-    res.statusCode = 302
-    res.end()
-
-explorouter = connect(connect.router (app) ->
-  app.get '/publications', views.doPublications
-  app.get '/saved', views.doSaved
-  app.get '/help', views.doHelp
-  app.get '/group', views.doGroup
-  app.get '/user', views.doUser
-  app.get '/objects', quickRedirect 'publications/'
-  app.get '/observations', views.doObservations
-  app.get '/proposals', quickRedirect 'publications/'
-  app.get '/catalogs', quickRedirect 'publications/'
-  app.get '/', quickRedirect 'user/'
-  )
 
 server = connect.createServer()
 #server.use connect.logger()
 server.use connect.cookieParser()
 server.use connect.query()
 
-# Not sure we need to use session middleware, more like login moddleware cookies.
-# Especially since we dont seem to know how not to reextend the time for session cookies.
-# thats prolly right behavior for session cookies since the more people use the more we wanna keep them on
-# server.use(connect.session({ store: new RedisStore, secret: 'keyboard cat', cookie :{maxAge: 31536000000} }));
-#
-server.use STATICPREFIX+'/', connect.static(__dirname + '/static/ajax-solr/')
-#server.use SITEPREFIX+'/', quickRedirect 'explorer/user'
-server.use SITEPREFIX+'/solr/', solrrouter
-server.use SITEPREFIX+'/solr2/', solrrouter2
-server.use SITEPREFIX+'/explorer/', explorouter
 server.use SITEPREFIX+'/adsjsonp', makeADSJSONPCall
 
 # Using get to put into redis:BAD but just for testing
@@ -211,12 +118,6 @@ server.use SITEPREFIX+'/savesearchestotag', doPostWithJSON tags.saveSearchesToTa
 server.use SITEPREFIX+'/savepubstotag', doPostWithJSON tags.savePubsToTag
 server.use SITEPREFIX+'/saveobsvstotag', doPostWithJSON tags.saveObsvsToTag
 
-# Used by the saved search page to provide functionality
-# to the saved publications list. This is a hack to work
-# around the same-origin policy.
-
-server.use SITEPREFIX+'/adsproxy', doADSProxy
-server.use SITEPREFIX+'/adsproxy2', doADSProxy2
 
 server.use SITEPREFIX+'/savedsearches', saved.getSavedSearches
 server.use SITEPREFIX+'/savedsearches2', saved.getSavedSearches2
@@ -249,15 +150,11 @@ server.use SITEPREFIX+'/pendinginvitationtogroups', groups.pendingInvitationToGr
 # not sure of the best way to do this, but want to privide access to
 # ajax-loader.gif and this way avoids hacking ResultWidget.2.0.js
 
-server.use '/images', connect.static(__dirname + '/static/ajax-solr/images/')
-server.use '/bootstrap', connect.static(__dirname + '/static/ajax-solr/images/')
-server.use '/backbone', connect.static(__dirname + '/static/ajax-solr/images/')
-
 runServer = (svr, port) ->
   now = new Date()
-  hosturl = "http://localhost:#{port}#{SITEPREFIX}/explorer/publications/"
+  hosturl = "http://localhost:#{port}#{SITEPREFIX}/"
   console.log "#{now.toUTCString()} - Starting server on #{hosturl}"
   svr.listen port
 
-migration.validateRedis redis_client, () -> runServer server, 3010
+migration.validateRedis redis_client, () -> runServer server, config.PORT
 
