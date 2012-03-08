@@ -100,13 +100,13 @@ configureServer = (config, server) ->
   server.use config.SITEPREFIX+'/saveobsvstotag', doPostWithJSON tags.saveObsvsToTag
 
 
-  server.use config.SITEPREFIX+'/savedsearches', saved.getSavedSearches
+  #server.use config.SITEPREFIX+'/savedsearches', saved.getSavedSearches
   server.use config.SITEPREFIX+'/savedsearches2', saved.getSavedSearches2
   server.use config.SITEPREFIX+'/savedsearchesforgroup2', saved.getSavedSearchesForGroup2
-  server.use config.SITEPREFIX+'/savedpubs', saved.getSavedPubs
+  #server.use config.SITEPREFIX+'/savedpubs', saved.getSavedPubs
   server.use config.SITEPREFIX+'/savedpubs2', saved.getSavedPubs2
   server.use config.SITEPREFIX+'/savedpubsforgroup2', saved.getSavedPubsForGroup2
-  server.use config.SITEPREFIX+'/savedobsvs', saved.getSavedObsvs
+  #server.use config.SITEPREFIX+'/savedobsvs', saved.getSavedObsvs
   server.use config.SITEPREFIX+'/savedobsvs2', saved.getSavedObsvs2
   server.use config.SITEPREFIX+'/savedobsvsforgroup2', saved.getSavedObsvsForGroup2
 

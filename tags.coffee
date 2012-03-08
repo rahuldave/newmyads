@@ -3,24 +3,21 @@ Handles saved items - e.g. searches and publications - that involves
 accessing information from Redis.
 ###
 
-redis_client = require("redis").createClient()
 
+utils = require("./utils")
+redis_client = utils.getRedisClient()
 requests = require("./requests-myads")
 failedRequest = requests.failedRequest
 successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
 httpcallbackmaker = requests.httpcallbackmaker
 
-ifHaveEmail = (fname, req, res, cb, failopts = {}) ->
-  ecb=httpcallbackmaker(fname, req, res)#no next
-  ifLoggedIn req, res, (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-        if err
-            return ecb err, email
-        if email
-            cb email
-        else
-            return ecb err, email
+ifHaveEmail = utils.ifHaveEmail
+getSortedElements = utils.getSortedElements
+getSortedElementsAndScores = utils.getSortedElementsAndScores
+timeToText = utils.timeToText
+searchToText = utils.searchToText
+
 
 #notice that this dosent do all the saving in one transaction. this is a BUG. fix it in groups too.
 _doSaveSearchToTag = (taggedBy, tagName, savedhashlist, searchtype, callback) ->
@@ -143,58 +140,7 @@ saveObsvsToTag = ({tagName, objectsToSave}, req, res, next) ->
   ifHaveEmail __fname, req, res, (savedBy) ->
       _doSaveSearchToTag savedBy, tagName, objectsToSave, 'obsv', httpcallbackmaker(__fname, req, res, next)
             
-searchToText = (searchTerm) ->
-    # lazy way to remove the trailing search term
 
-    splits=searchTerm.split '#'
-    s = "&#{splits[1]}"
-    s = s.replace '&q=*%3A*', ''
-
-    # only decode after the initial split to protect against the
-    # unlikely event that &fq= appears as part of a search term.
-    terms = s.split /&fq=/
-    terms.shift()
-    # ignore the first entry as '' by construction
-    out = ''
-    for term in terms 
-        [name, value] = decodeURIComponent(term).split ':', 2
-        out += "#{name}=#{value} "
-    
-
-    return out
-
-# Returns a string representation of timeString, which
-# should be a string containing the time in milliseconds,
-# nowDate is the "current" date in milliseconds.
-#
-timeToText = (nowDate, timeString) ->
-  t = parseInt timeString, 10
-  delta = nowDate - t
-  if delta < 1000
-    return "Now"
-
-  else if delta < 60000
-    return "#{Math.floor(delta/1000)}s ago"
-
-  else if delta < 60000 * 60
-    m = Math.floor(delta / 60000)
-    s = Math.floor((delta - m * 60000) /1000)
-    out = "#{m}m"
-    if s isnt 0
-      out += " #{s}s"
-    return "#{out} ago"
-
-  else if delta < 60000 * 60 * 24
-    h = Math.floor(delta / (60000 * 60))
-    delta = delta - h * 60000 * 60
-    m = Math.floor(delta / 60000)
-    out = "#{h}h"
-    if m isnt 0
-      out += " #{m}m"
-    return "#{out} ago"
-
-  d = new Date(t)
-  return d.toUTCString()
 
 # Modify the object view to add in the needed values
 # given the search results. This was originally used with Mustache
@@ -293,46 +239,6 @@ createSavedObsvTemplates = (nowDate, obsvkeys, obsvtimes, targets, obsvtitles, s
     view.savedobsvs = (makeTemplate i for i in [0..nobsv-1])
 
   return view
-# Get all the elements for the given key, stored
-# in a sorted list, and sent it to callback
-# as cb(err,values). If flag is true then the list is sorted in
-# ascending order of score (ie zrange rather than zrevrange)
-# otherwise descending order.
-#
-getSortedElements = (flag, key, cb) ->
-  redis_client.zcard key, (err, nelem) ->
-    # Could ask for nelem-1 but Redis seems to ignore
-    # overflow here
-    if flag
-      redis_client.zrange key, 0, nelem, cb
-    else
-      redis_client.zrevrange key, 0, nelem, cb
-
-# As getSortedElements but the values sent to the callback is
-# a hash with two elements:
-#    elements  - the elements
-#    scores    - the scores
-#
-getSortedElementsAndScores = (flag, key, cb) ->
-  redis_client.zcard key, (e1, nelem) ->
-    if nelem is 0
-      cb e1, elements: [], scores: []
-
-    else
-      splitIt = (err, values) ->
-        # in case nelem has changed
-        nval = values.length - 1
-        response =
-          elements: (values[i] for i in [0..nval] by 2)
-          scores:   (values[i] for i in [1..nval] by 2)
-
-        cb err, response
-
-      if flag
-        redis_client.zrange key, 0, nelem, "withscores", splitIt
-      else
-        redis_client.zrevrange key, 0, nelem, "withscores", splitIt
-
 
 #Current BUG: security issue--leaks all groups the item has been saved in, not just mine
 #seems the only thing that currently changes here is the initial set of searches.

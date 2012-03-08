@@ -8,8 +8,8 @@ accessing information from Redis.
 #in the value of a key means that we cant really delete it, because someone has a reference to it.
 
 #BUG..where do I do redis quits? I might be losing memory!! Also related to scripts not exiting, surely!
-
-redis_client = require("redis").createClient()
+utils = require("./utils")
+redis_client = utils.getRedisClient()
 
 requests = require("./requests-myads")
 failedRequest = requests.failedRequest
@@ -17,38 +17,58 @@ successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
 httpcallbackmaker = requests.httpcallbackmaker
 
-ifHaveEmail = (fname, req, res, cb, failopts = {}) ->
-  ecb=httpcallbackmaker(fname, req, res)#no next
-  ifLoggedIn req, res, (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-        if err
-            return ecb err, email
-        if email
-            cb email
-        else
-            return ecb err, email
-# A comment on saved times, used in both savePub and saveSearch.
-#
-# Approximate the save time as the time we process the request
-# on the server, rather than when it was made (in case the user's
-# clock is not set sensibly and it allows us to associate a time
-# zone, even if it is our time zone and not the user's).
-#
-# For now we save the UTC version of the time and provide no
-# way to change this to something meaningful to the user.
-#
-# Alternatives include:
-#
-# *  the client could send the time as a string, including the
-#    time zone, but this relies on their clock being okay
-#
-# *  the client can send in the local timezone info which can
-#    then be used to format the server-side derived time
-#    Not sure if can trust the time zone offset from the client
-#    if can not trust the time itself. Calculating a useful display
-#    string from the timezone offset is fiddly.
-#
+ifHaveEmail = utils.ifHaveEmail
+getSortedElements = utils.getSortedElements
+getSortedElementsAndScores = utils.getSortedElementsAndScores
+timeToText = utils.timeToText
+searchToText = utils.searchToText
 
+# Needed to check whether we get a string or an array
+# of strings. Taken from
+# http://stackoverflow.com/questions/1058427/how-to-detect-if-a-variable-is-an-array/1058457#1058457
+#
+# Is there a more CoffeeScript way of doing this (aside from a basic translation
+# to CoffeeScript)
+
+isArray = `function (o) {
+    return (o instanceof Array) ||
+        (Object.prototype.toString.apply(o) === '[object Array]');
+};`
+
+
+
+
+_doSaveSearch = (savedBy, objects, searchtype, callback) ->
+  saveTime = new Date().getTime()
+  savedtype="saved#{searchtype}"
+  savedset="saved#{searchtype}:#{savedBy}"
+  for idx in [0...objects.length]
+    theobject=objects[idx]
+    savedItem = theobject[savedtype]
+    hsets = (['hset', thekey, savedItem, theobject[key]] for key of theobject)
+    margsi = hsets.concat [['zadd', savedset, saveTime, savedItem]]
+    margs = margs.concat margsi
+  redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
+
+saveSearches = (objectsToSave, req, res, next) ->
+  console.log __fname="saveSearches"
+  ifHaveEmail __fname, req, res, (savedBy) ->
+      # keep as a multi even though now a single addition
+      _doSaveSearch savedBy, objectsToSave, 'search',  httpcallbackmaker(__fname, req, res, next)
+
+
+savePubs = (objectsToSave, req, res, next) ->
+  console.log __fname="savePubs"
+  o2s = ({savedbibcodes:pubbibcode, savedtitles:pubtitle, savedpub:savedpub} for {savedpub, pubbibcode, pubtitle} in objectsToSave)
+  ifHaveEmail __fname, req, res, (savedBy) ->
+     _doSaveSearch savedBy, o2s, 'pub', httpcallbackmaker(__fname, req, res, next)
+      
+saveObsvs = (objectsToSave, req, res, next) ->
+  console.log __fname="saveObsvs"
+  o2s = ({savedtargets:obsvtarget, savedobsvtitles:obsvtitle, savedobsv:savedobsv} for {savedobsv, obsvtarget, obsvtitle} in objectsToSave)
+  ifHaveEmail __fname, req, res, (savedBy) ->
+      _doSaveSearch savedBy, o2s, 'obsv', httpcallbackmaker(__fname, req, res, next)
+#################################################################################
 saveSearch = (payload, req, res, next) ->
   console.log "In saveSearch: cookies=#{req.cookies} payload=#{payload}"
   saveTime = new Date().getTime()
@@ -62,6 +82,51 @@ saveSearch = (payload, req, res, next) ->
       margs = [['zadd', "savedsearch:#{email}", saveTime, savedSearch]]
       redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
 
+
+savePub = (payload, req, res, next) ->
+  console.log "In savePub: cookies=#{req.cookies} payload=#{payload}"
+  saveTime = new Date().getTime()
+
+  ifLoggedIn req, res, (loginid) ->
+    jsonObj = JSON.parse payload
+    savedPub = jsonObj.savedpub
+    bibCode = jsonObj.pubbibcode
+    title = jsonObj.pubtitle
+
+    redis_client.get "email:#{loginid}", (err, email) ->
+
+      # Moved to a per-user database for titles and bibcodes so that
+      # we can delete this information. I am thinking that this could
+      # just be asked via AJAX requests of Solr by the client in the
+      # pubsub branch so could be removed.
+      #
+      margs = [['hset', "savedbibcodes", savedPub, bibCode],
+               ['hset', "savedtitles", savedPub, title],
+               ['zadd', "savedpub:#{email}", saveTime, savedPub]]
+      redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
+
+saveObsv = (payload, req, res, next) ->
+  console.log "In saveObsv: cookies=#{req.cookies} payload=#{payload}"
+  saveTime = new Date().getTime()
+
+  ifLoggedIn req, res, (loginid) ->
+    jsonObj = JSON.parse payload
+    savedObsv = jsonObj.savedobsv
+    target = jsonObj.obsvtarget
+    title = jsonObj.obsvtitle
+
+    redis_client.get "email:#{loginid}", (err, email) ->
+
+      # Moved to a per-user database for titles and bibcodes so that
+      # we can delete this information. I am thinking that this could
+      # just be asked via AJAX requests of Solr by the client in the
+      # pubsub branch so could be removed.
+      #
+      margs = [['hset', "savedtargets", savedObsv, target],
+               ['hset', "savedobsvtitles", savedObsv, title],
+               ['zadd', "savedobsv:#{email}", saveTime, savedObsv]]
+      redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
+      
 #each searchObject is {savedsearch|savedpub|savedobsv}
 #practically i want users to have already saved an object to save it to a group
 #in actuality i dont require it. and when i delete i dont check if user has individually
@@ -187,114 +252,18 @@ saveSearchesToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
       # keep as a multi even though now a single addition
       _doSaveSearchToGroup savedBy, fqGroupName, objectsToSave, 'search',  httpcallbackmaker(__fname, req, res, next)
 
-      
-savePub = (payload, req, res, next) ->
-  console.log "In savePub: cookies=#{req.cookies} payload=#{payload}"
-  saveTime = new Date().getTime()
-
-  ifLoggedIn req, res, (loginid) ->
-    jsonObj = JSON.parse payload
-    savedPub = jsonObj.savedpub
-    bibCode = jsonObj.pubbibcode
-    title = jsonObj.pubtitle
-
-    redis_client.get "email:#{loginid}", (err, email) ->
-
-      # Moved to a per-user database for titles and bibcodes so that
-      # we can delete this information. I am thinking that this could
-      # just be asked via AJAX requests of Solr by the client in the
-      # pubsub branch so could be removed.
-      #
-      margs = [['hset', "savedbibcodes", savedPub, bibCode],
-               ['hset', "savedtitles", savedPub, title],
-               ['zadd', "savedpub:#{email}", saveTime, savedPub]]
-      redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
 
 savePubsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="savePubsToGroup"
   ifHaveEmail __fname, req, res, (savedBy) ->
      _doSaveSearchToGroup savedBy, fqGroupName, objectsToSave, 'pub', httpcallbackmaker(__fname, req, res, next)
       
-saveObsv = (payload, req, res, next) ->
-  console.log "In saveObsv: cookies=#{req.cookies} payload=#{payload}"
-  saveTime = new Date().getTime()
-
-  ifLoggedIn req, res, (loginid) ->
-    jsonObj = JSON.parse payload
-    savedObsv = jsonObj.savedobsv
-    target = jsonObj.obsvtarget
-    title = jsonObj.obsvtitle
-
-    redis_client.get "email:#{loginid}", (err, email) ->
-
-      # Moved to a per-user database for titles and bibcodes so that
-      # we can delete this information. I am thinking that this could
-      # just be asked via AJAX requests of Solr by the client in the
-      # pubsub branch so could be removed.
-      #
-      margs = [['hset', "savedtargets", savedObsv, target],
-               ['hset', "savedobsvtitles", savedObsv, title],
-               ['zadd', "savedobsv:#{email}", saveTime, savedObsv]]
-      redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
-      
-      
 saveObsvsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="saveObsvToGroup"
   ifHaveEmail __fname, req, res, (savedBy) ->
       _doSaveSearchToGroup savedBy, fqGroupName, objectsToSave, 'obsv', httpcallbackmaker(__fname, req, res, next)
             
-searchToText = (searchTerm) ->
-    # lazy way to remove the trailing search term
 
-    splits=searchTerm.split '#'
-    s = "&#{splits[1]}"
-    s = s.replace '&q=*%3A*', ''
-
-    # only decode after the initial split to protect against the
-    # unlikely event that &fq= appears as part of a search term.
-    terms = s.split /&fq=/
-    terms.shift()
-    # ignore the first entry as '' by construction
-    out = ''
-    for term in terms 
-        [name, value] = decodeURIComponent(term).split ':', 2
-        out += "#{name}=#{value} "
-    
-
-    return out
-
-# Returns a string representation of timeString, which
-# should be a string containing the time in milliseconds,
-# nowDate is the "current" date in milliseconds.
-#
-timeToText = (nowDate, timeString) ->
-  t = parseInt timeString, 10
-  delta = nowDate - t
-  if delta < 1000
-    return "Now"
-
-  else if delta < 60000
-    return "#{Math.floor(delta/1000)}s ago"
-
-  else if delta < 60000 * 60
-    m = Math.floor(delta / 60000)
-    s = Math.floor((delta - m * 60000) /1000)
-    out = "#{m}m"
-    if s isnt 0
-      out += " #{s}s"
-    return "#{out} ago"
-
-  else if delta < 60000 * 60 * 24
-    h = Math.floor(delta / (60000 * 60))
-    delta = delta - h * 60000 * 60
-    m = Math.floor(delta / 60000)
-    out = "#{h}h"
-    if m isnt 0
-      out += " #{m}m"
-    return "#{out} ago"
-
-  d = new Date(t)
-  return d.toUTCString()
 
 # Modify the object view to add in the needed values
 # given the search results. This was originally used with Mustache
@@ -394,81 +363,6 @@ createSavedObsvTemplates = (nowDate, obsvkeys, obsvtimes, targets, obsvtitles, s
 
   return view
   
-# Get all the elements for the given key, stored
-# in a sorted list, and sent it to callback
-# as cb(err,values). If flag is true then the list is sorted in
-# ascending order of score (ie zrange rather than zrevrange)
-# otherwise descending order.
-#
-getSortedElements = (flag, key, cb) ->
-  redis_client.zcard key, (err, nelem) ->
-    # Could ask for nelem-1 but Redis seems to ignore
-    # overflow here
-    if flag
-      redis_client.zrange key, 0, nelem, cb
-    else
-      redis_client.zrevrange key, 0, nelem, cb
-
-# As getSortedElements but the values sent to the callback is
-# a hash with two elements:
-#    elements  - the elements
-#    scores    - the scores
-#
-getSortedElementsAndScores = (flag, key, cb) ->
-  redis_client.zcard key, (e1, nelem) ->
-    if nelem is 0
-      cb e1, elements: [], scores: []
-
-    else
-      splitIt = (err, values) ->
-        # in case nelem has changed
-        nval = values.length - 1
-        response =
-          elements: (values[i] for i in [0..nval] by 2)
-          scores:   (values[i] for i in [1..nval] by 2)
-
-        cb err, response
-
-      if flag
-        redis_client.zrange key, 0, nelem, "withscores", splitIt
-      else
-        redis_client.zrevrange key, 0, nelem, "withscores", splitIt
-
-getSavedSearches = (req, res, next) ->
-  console.log "in getSavedSearches"
-  kword = 'savedsearches'
-  doIt = (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-      getSortedElements true, "savedsearch:#{email}", (err2, searches) ->
-        console.log "getSavedSearches reply=#{searches} err=#{err2}"
-        successfulRequest res,
-          keyword: kword
-          message: searches
-
-  ifLoggedIn req, res, doIt, keyword: kword
-
-# Unlike getSavedSearches we return the template values for
-# use by the client to create the page
-
-#This would also be a place to type the search, pub, vs observation, vs thrown, if
-#needed
-
-getSavedSearches22 = (req, res, next) ->
-  kword = 'savedsearches'
-  doIt = (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-      getSortedElementsAndScores false, "savedsearch:#{email}", (err2, searches) ->
-        if err2?
-          console.log "*** getSavedSearches2: failed for loginid=#{loginid} email=#{email} err=#{err2}"
-          failedRequest res, keyword: kword
-        else
-          nowDate = new Date().getTime()
-          view = createSavedSearchTemplates nowDate, searches.elements, searches.scores, (email for ele in searches.elements), (['default'] for ele in searches.elements)
-          successfulRequest res,
-            keyword: kword
-            message: view
-
-  ifLoggedIn req, res, doIt, keyword: kword
 
 #Current BUG: security issue--leaks all groups the item has been saved in, not just mine
 _doSearch = (email, searchtype, templateCreatorFunc, res, kword, callback, augmenthash=null) ->
@@ -637,45 +531,7 @@ getSavedSearchesForGroup2 = (req, res, next) ->
   
   
 
-# We only return the document ids here; for the full document info
-# see doSaved.
 
-getSavedPubs = (req, res, next) ->
-  kword = 'savedpubs'
-  doIt = (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-      getSortedElements true, "savedpub:#{email}", (err2, searches) ->
-        console.log "getSavedPubs reply=#{searches} err=#{err2}"
-        successfulRequest res,
-          keyword: kword
-          message: searches
-
-  ifLoggedIn req, res, doIt, keyword: kword
-
-# Unlike getSavedPubs we return the template values for
-# use by the client to create the page
-
-getSavedPubs22 = (req, res, next) ->
-  kword = 'savedpubs'
-  doIt = (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-      getSortedElementsAndScores false, "savedpub:#{email}", (err2, savedpubs) ->
-        if err2?
-          console.log "*** getSavedPubs2: failed for loginid=#{loginid} email=#{email} err=#{err2}"
-          failedRequest res, keyword: kword
-
-        else
-          pubkeys = savedpubs.elements
-          pubtimes = savedpubs.scores
-          redis_client.hmget "savedtitles", pubkeys, (err2, pubtitles) ->
-            redis_client.hmget "savedbibcodes", pubkeys, (err3, bibcodes) ->
-              nowDate = new Date().getTime()
-              view = createSavedPubTemplates nowDate, pubkeys, pubtimes, bibcodes, pubtitles, (email for ele in savedpubs.elements), (['default'] for ele in savedpubs.elements)
-              successfulRequest res,
-                keyword: kword
-                message: view
-
-  ifLoggedIn req, res, doIt, keyword: kword
   
 getSavedPubsForGroup2 = (req, res, next) ->
   kword = 'savedpubsforgroup'
@@ -685,45 +541,6 @@ getSavedPubsForGroup2 = (req, res, next) ->
         _doSearchForGroup email, fqGroupName, 'pub', createSavedPubTemplates, res, kword, 
                 httpcallbackmaker(__fname, req, res, next), {titlefield:'titles', namefield:'bibcodes'}
 
-
-
-#Now do it for Observations
-getSavedObsvs = (req, res, next) ->
-  kword = 'savedobsvs'
-  doIt = (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-      getSortedElements true, "savedobsv:#{email}", (err2, searches) ->
-        console.log "getSavedObsvs reply=#{searches} err=#{err2}"
-        successfulRequest res,
-          keyword: kword
-          message: searches
-
-  ifLoggedIn req, res, doIt, keyword: kword
-
-# Unlike getSavedPubs we return the template values for
-# use by the client to create the page
-
-getSavedObsvs22 = (req, res, next) ->
-  kword = 'savedobsvs'
-  doIt = (loginid) ->
-    redis_client.get "email:#{loginid}", (err, email) ->
-      getSortedElementsAndScores false, "savedobsv:#{email}", (err2, savedobsvs) ->
-        if err2?
-          console.log "*** getSavedObsvs2: failed for loginid=#{loginid} email=#{email} err=#{err2}"
-          failedRequest res, keyword: kword
-
-        else
-          obsvkeys = savedobsvs.elements
-          obsvtimes = savedobsvs.scores
-          redis_client.hmget "savedobsvtitles", obsvkeys, (err2, obsvtitles) ->
-            redis_client.hmget "savedtargets", obsvkeys, (err3, targets) ->
-              nowDate = new Date().getTime()
-              view = createSavedObsvTemplates nowDate, obsvkeys, obsvtimes, targets, obsvtitles,  (email for ele in savedobsvs.elements), (['default'] for ele in savedobsvs.elements)
-              successfulRequest res,
-                keyword: kword
-                message: view
-
-  ifLoggedIn req, res, doIt, keyword: kword
   
   
 getSavedObsvsForGroup2 = (req, res, next) ->
@@ -898,18 +715,6 @@ deleteItem = (funcname, idname, delItems) ->
       else
         failedRequest res
 
-# Needed to check whether we get a string or an array
-# of strings. Taken from
-# http://stackoverflow.com/questions/1058427/how-to-detect-if-a-variable-is-an-array/1058457#1058457
-#
-# Is there a more CoffeeScript way of doing this (aside from a basic translation
-# to CoffeeScript)
-
-isArray = `function (o) {
-    return (o instanceof Array) ||
-        (Object.prototype.toString.apply(o) === '[object Array]');
-};`
-
 # Create a function to delete multiple search or publication items
 #   funcname is used to create a console log message of 'In ' + funcname
 #     on entry to the function
@@ -970,13 +775,10 @@ exports.saveSearchesToGroup = saveSearchesToGroup
 exports.savePubsToGroup = savePubsToGroup
 exports.saveObsvsToGroup = saveObsvsToGroup
 
-exports.getSavedSearches = getSavedSearches
 exports.getSavedSearches2 = getSavedSearches2
 exports.getSavedSearchesForGroup2 = getSavedSearchesForGroup2
-exports.getSavedPubs = getSavedPubs
 exports.getSavedPubs2 = getSavedPubs2
 exports.getSavedPubsForGroup2 = getSavedPubsForGroup2
-exports.getSavedObsvs = getSavedObsvs
 exports.getSavedObsvs2 = getSavedObsvs2
 exports.getSavedObsvsForGroup2 = getSavedObsvsForGroup2
 
