@@ -28,6 +28,7 @@ getUser = user.getUser
 
 
 saved = require "./saved"
+savedgroup = require "./saved-group" 
 tags = require "./tags"
 groups = require "./groups"
 
@@ -63,13 +64,13 @@ configureServer = (config, server) ->
   server.use config.SITEPREFIX+'/login', loginUser
 
 
-  server.use config.SITEPREFIX+'/savesearch', doPost saved.saveSearch
-  server.use config.SITEPREFIX+'/savepub', doPost saved.savePub
-  server.use config.SITEPREFIX+'/saveobsv', doPost saved.saveObsv
+  server.use config.SITEPREFIX+'/savesearch', doPost saved.saveSearches
+  server.use config.SITEPREFIX+'/savepub', doPost saved.savePubs
+  server.use config.SITEPREFIX+'/saveobsv', doPost saved.saveObsvs
 
-  server.use config.SITEPREFIX+'/savesearchestogroup', doPostWithJSON saved.saveSearchesToGroup
-  server.use config.SITEPREFIX+'/savepubstogroup', doPostWithJSON saved.savePubsToGroup
-  server.use config.SITEPREFIX+'/saveobsvstogroup', doPostWithJSON saved.saveObsvsToGroup
+  server.use config.SITEPREFIX+'/savesearchestogroup', doPostWithJSON savedgroup.saveSearchesToGroup
+  server.use config.SITEPREFIX+'/savepubstogroup', doPostWithJSON savedgroup.savePubsToGroup
+  server.use config.SITEPREFIX+'/saveobsvstogroup', doPostWithJSON savedgroup.saveObsvsToGroup
 
 
   server.use config.SITEPREFIX+'/deletesearch', doPost saved.deleteSearch
@@ -80,9 +81,9 @@ configureServer = (config, server) ->
   server.use config.SITEPREFIX+'/deleteobsvs', doPost saved.deleteObsvs
 
 
-  server.use config.SITEPREFIX+'/deletesearchesfromgroup', doPostWithJSON saved.deleteSearchesFromGroup
-  server.use config.SITEPREFIX+'/deletepubsfromgroup', doPostWithJSON saved.deletePubsFromGroup
-  server.use config.SITEPREFIX+'/deleteobsvsfromgroup', doPostWithJSON saved.deleteObsvsFromGroup
+  server.use config.SITEPREFIX+'/deletesearchesfromgroup', doPostWithJSON savedgroup.deleteSearchesFromGroup
+  server.use config.SITEPREFIX+'/deletepubsfromgroup', doPostWithJSON savedgroup.deletePubsFromGroup
+  server.use config.SITEPREFIX+'/deleteobsvsfromgroup', doPostWithJSON savedgroup.deleteObsvsFromGroup
 
 
   server.use config.SITEPREFIX+'/deletesearchesfromtag', doPostWithJSON tags.deleteSearchesFromTag
@@ -102,13 +103,13 @@ configureServer = (config, server) ->
 
   #server.use config.SITEPREFIX+'/savedsearches', saved.getSavedSearches
   server.use config.SITEPREFIX+'/savedsearches2', saved.getSavedSearches2
-  server.use config.SITEPREFIX+'/savedsearchesforgroup2', saved.getSavedSearchesForGroup2
+  server.use config.SITEPREFIX+'/savedsearchesforgroup2', savedgroup.getSavedSearchesForGroup2
   #server.use config.SITEPREFIX+'/savedpubs', saved.getSavedPubs
   server.use config.SITEPREFIX+'/savedpubs2', saved.getSavedPubs2
-  server.use config.SITEPREFIX+'/savedpubsforgroup2', saved.getSavedPubsForGroup2
+  server.use config.SITEPREFIX+'/savedpubsforgroup2', savedgroup.getSavedPubsForGroup2
   #server.use config.SITEPREFIX+'/savedobsvs', saved.getSavedObsvs
   server.use config.SITEPREFIX+'/savedobsvs2', saved.getSavedObsvs2
-  server.use config.SITEPREFIX+'/savedobsvsforgroup2', saved.getSavedObsvsForGroup2
+  server.use config.SITEPREFIX+'/savedobsvsforgroup2', savedgroup.getSavedObsvsForGroup2
 
   #Groupfunctions
   server.use config.SITEPREFIX+'/creategroup', doPostWithJSON groups.createGroup

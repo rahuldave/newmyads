@@ -14,6 +14,7 @@ ifHaveEmail = (fname, req, res, cb, failopts = {}) ->
   ecb=httpcallbackmaker(fname, req, res)#no next
   ifLoggedIn req, res, (loginid) ->
     redis_client.get "email:#{loginid}", (err, email) ->
+        console.log "email is", email, err
         if err
             return ecb err, email
         if email
