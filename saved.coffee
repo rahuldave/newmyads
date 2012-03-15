@@ -35,21 +35,55 @@ isArray = `function (o) {
         (Object.prototype.toString.apply(o) === '[object Array]');
 };`
 
+class Savedb
+  constructor: (client, callback) ->
+    @connection = client
+    @callback = callback
+    @transaction=[]
 
+  addActions: (actions) ->
+    actionlist = if isArray actions then actions else [actions]
+    @transaction = @transaction.concat actionlist
+
+  clear: () ->
+    @transaction=[]
+
+  execute: () ->
+    @connection.multi(@transaction).exec (err, reply) =>
+      #currently zero transaction ob both error and successful reply
+      console.log "@transaction", @transaction
+      @clear()
+      @callback err, reply
+
+  saveItem: (itemobject, itemtype, savedBy) ->
+    #BUG: how do we prevent adding an item twice: zadd ought to just update timestamp
+    #or we should throw an error
+    savetime = new Date().getTime()
+    savedtype="saved#{itemtype}"
+    savedset="saved#{itemtype}:#{savedBy}"
+    saveditem = itemobject[savedtype]
+    actions = (['hset', thekey, saveditem, itemobject[thekey]] for thekey of itemobject)
+    actions = actions.concat [['zadd', savedset, savetime, saveditem]]
+    @addActions actions
 
 
 _doSaveSearch = (savedBy, objects, searchtype, res, callback) ->
   saveTime = new Date().getTime()
-  savedtype="saved#{searchtype}"
-  savedset="saved#{searchtype}:#{savedBy}"
+  #savedtype="saved#{searchtype}"
+  #savedset="saved#{searchtype}:#{savedBy}"
+  savedb = new Savedb(redis_client, callback)
   margs=[]
+  #redis_client.multi(margs).exec (err, reply) -> 
+  #  callback err, reply
   for idx in [0...objects.length]
     theobject=objects[idx]
-    savedItem = theobject[savedtype]
-    hsets = (['hset', thekey, savedItem, theobject[thekey]] for thekey of theobject)
-    margsi = hsets.concat [['zadd', savedset, saveTime, savedItem]]
-    margs = margs.concat margsi
-  redis_client.multi(margs).exec (err2, reply) -> successfulRequest res
+    #savedItem = theobject[savedtype]
+    #hsets = (['hset', thekey, savedItem, theobject[thekey]] for thekey of theobject)
+    #margsi = hsets.concat [['zadd', savedset, saveTime, savedItem]]
+    #margs = margs.concat margsi
+    savedb.saveItem(theobject, searchtype, savedBy) 
+  savedb.execute()   
+  
 
 saveSearches = (payload, req, res, next) ->
   console.log __fname="saveSearches"
