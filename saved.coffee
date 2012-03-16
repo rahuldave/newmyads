@@ -18,6 +18,7 @@ ifLoggedIn = requests.ifLoggedIn
 httpcallbackmaker = requests.httpcallbackmaker
 
 ifHaveEmail = utils.ifHaveEmail
+ifHaveAuth = utils.ifHaveAuth
 getSortedElements = utils.getSortedElements
 getSortedElementsAndScores = utils.getSortedElementsAndScores
 timeToText = utils.timeToText
@@ -35,6 +36,25 @@ isArray = `function (o) {
         (Object.prototype.toString.apply(o) === '[object Array]');
 };`
 
+class Userdb
+  constructor: (client, callback, errorcallback) ->
+    @connection = client
+    @callback = callback
+    @errorcallback = errorcallback
+    @transaction=[]
+
+  ifHaveAuth: (fname, req, res, callback) ->
+    errorcallback=httpcallbackmaker(fname, req, res)#no next
+    ifLoggedIn req, res, (loginid) =>
+      @connection.get "email:#{loginid}", (err, email) ->
+          console.log "email is", email, err
+          if err
+              return errorcallback err, email
+          if email
+              callback email
+          else
+              return errorcallback err, email
+
 class Savedb
   constructor: (client, callback) ->
     @connection = client
@@ -48,12 +68,13 @@ class Savedb
   clear: () ->
     @transaction=[]
 
-  execute: () ->
+  execute: (cb=null) ->
     @connection.multi(@transaction).exec (err, reply) =>
       #currently zero transaction ob both error and successful reply
       console.log "@transaction", @transaction
+      callb = if cb then cb else @callback
       @clear()
-      @callback err, reply
+      return callb err, reply
 
   saveItem: (itemobject, itemtype, savedBy) ->
     #BUG: how do we prevent adding an item twice: zadd ought to just update timestamp
@@ -69,18 +90,10 @@ class Savedb
 
 _doSaveSearch = (savedBy, objects, searchtype, res, callback) ->
   saveTime = new Date().getTime()
-  #savedtype="saved#{searchtype}"
-  #savedset="saved#{searchtype}:#{savedBy}"
   savedb = new Savedb(redis_client, callback)
   margs=[]
-  #redis_client.multi(margs).exec (err, reply) -> 
-  #  callback err, reply
   for idx in [0...objects.length]
     theobject=objects[idx]
-    #savedItem = theobject[savedtype]
-    #hsets = (['hset', thekey, savedItem, theobject[thekey]] for thekey of theobject)
-    #margsi = hsets.concat [['zadd', savedset, saveTime, savedItem]]
-    #margs = margs.concat margsi
     savedb.saveItem(theobject, searchtype, savedBy) 
   savedb.execute()   
   
@@ -88,32 +101,35 @@ _doSaveSearch = (savedBy, objects, searchtype, res, callback) ->
 saveSearches = (payload, req, res, next) ->
   console.log __fname="saveSearches"
   console.log "In saveSearches: cookies=#{req.cookies} payload=#{payload}"
-  ifHaveEmail __fname, req, res, (savedBy) ->
+  cb = httpcallbackmaker(__fname, req, res, next)
+  ifHaveAuth req, res, cb, (savedBy) ->
       # keep as a multi even though now a single addition
-      console.log "sb", savedBy
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
-      _doSaveSearch savedBy, objectsToSave, 'search',  res, httpcallbackmaker(__fname, req, res, next)
+      _doSaveSearch savedBy, objectsToSave, 'search',  res, cb
 
 
 savePubs = (payload, req, res, next) ->
   console.log __fname="savePubs"
   console.log "In savePubs: cookies=#{req.cookies} payload=#{payload}"
-  ifHaveEmail __fname, req, res, (savedBy) ->
-      console.log "sb", savedBy
+  cb = httpcallbackmaker(__fname, req, res, next)
+  ifHaveAuth req, res, cb, (savedBy) ->
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
       o2s = ({savedbibcodes:pubbibcode, savedtitles:pubtitle, savedpub:savedpub} for {savedpub, pubbibcode, pubtitle} in objectsToSave)
-      _doSaveSearch savedBy, o2s, 'pub', res, httpcallbackmaker(__fname, req, res, next)
+      _doSaveSearch savedBy, o2s, 'pub', res, cb
       
 saveObsvs = (payload, req, res, next) ->
   console.log __fname="saveObsvs"
-  ifHaveEmail __fname, req, res, (savedBy) ->
-      console.log "sb", savedBy
+  console.log "In saveObsvs: cookies=#{req.cookies} payload=#{payload}"
+  cb = httpcallbackmaker(__fname, req, res, next)
+  cb = httpcallbackmaker(__fname, req, res, next)
+  ifHaveAuth req, res, cb, (savedBy) ->
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
       o2s = ({savedtargets:obsvtarget, savedobsvtitles:obsvtitle, savedobsv:savedobsv} for {savedobsv, obsvtarget, obsvtitle} in objectsToSave)
-      _doSaveSearch savedBy, o2s, 'obsv', res, httpcallbackmaker(__fname, req, res, next)
+      _doSaveSearch savedBy, o2s, 'obsv', res, cb
+
 #################################################################################
 saveSearch = (payload, req, res, next) ->
   console.log "In saveSearch: cookies=#{req.cookies} payload=#{payload}"

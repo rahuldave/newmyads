@@ -23,6 +23,18 @@ ifHaveEmail = (fname, req, res, cb, failopts = {}) ->
             return ecb err, email
 
 
+ifHaveAuth = (req, res, ecb, cb, failopts = {}) ->
+  ifLoggedIn req, res, (loginid) ->
+    redis_client.get "email:#{loginid}", (err, email) ->
+        console.log "email is", email, err
+        if err
+            return ecb err, email
+        #Philosophy: a null result is treated as an error
+        if email
+            return cb email
+        else
+            return ecb err, email
+
 searchToText = (searchTerm) ->
     # lazy way to remove the trailing search term
 
@@ -139,6 +151,7 @@ getSortedElementsAndScores = (flag, key, cb) ->
         redis_client.zrevrange key, 0, nelem, "withscores", splitIt
 
 exports.ifHaveEmail = ifHaveEmail
+exports.ifHaveAuth = ifHaveAuth
 exports.getSortedElements = getSortedElements
 exports.getSortedElementsAndScores = getSortedElementsAndScores
 exports.timeToText = timeToText
