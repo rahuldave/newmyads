@@ -68,7 +68,8 @@ ifLoggedIn = (req, res, cb, failopts = {}) ->
     
 
             
-  
+# this has an undefined error mode. Returns from flasy values may do this too
+#this is the 0 style returns redis sometimes gets TODO make sure this is ok, and failedrequest is getting ok options  
 httpcallbackmaker = (keyword, req, res, next)->
     return (err, reply)->
         if err

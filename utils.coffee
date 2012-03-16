@@ -10,7 +10,11 @@ successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
 httpcallbackmaker = requests.httpcallbackmaker
 
-ifHaveEmail = (fname, req, res, cb, failopts = {}) ->
+#again null response is treated as error below. not sure this is right
+#TODO: ecb ought to have a proper message.
+
+#In genereal maybe stuff should raise exceptions and be handled? what does step want/ TODO
+ifHaveEmail = (fname, req, res, cb) ->
   ecb=httpcallbackmaker(fname, req, res)#no next
   ifLoggedIn req, res, (loginid) ->
     redis_client.get "email:#{loginid}", (err, email) ->
@@ -23,7 +27,7 @@ ifHaveEmail = (fname, req, res, cb, failopts = {}) ->
             return ecb err, email
 
 
-ifHaveAuth = (req, res, ecb, cb, failopts = {}) ->
+ifHaveAuth = (req, res, ecb, cb) ->
   ifLoggedIn req, res, (loginid) ->
     redis_client.get "email:#{loginid}", (err, email) ->
         console.log "email is", email, err
