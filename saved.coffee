@@ -19,6 +19,7 @@ httpcallbackmaker = requests.httpcallbackmaker
 
 ifHaveEmail = utils.ifHaveEmail
 ifHaveAuth = utils.ifHaveAuth
+ifHavePermissions = utils.ifHavePermissions
 getSortedElements = utils.getSortedElements
 getSortedElementsAndScores = utils.getSortedElementsAndScores
 timeToText = utils.timeToText
@@ -36,23 +37,7 @@ isArray = `function (o) {
         (Object.prototype.toString.apply(o) === '[object Array]');
 };`
 
-class Userdb
-  constructor: (client, callback, errorcallback) ->
-    @connection = client
-    @callback = callback
-    @errorcallback = errorcallback
-    @transaction=[]
 
-  ifHaveAuth: (req, res, lastcallback, callback) ->
-    ifLoggedIn req, res, (loginid) =>
-      @connection.get "email:#{loginid}", (err, email) ->
-          console.log "email is", email, err
-          if err
-              return lastcallback err, email
-          if email
-              callback email
-          else
-              return lastcallback err, email
 
 class Savedb
   constructor: (client, callback) ->
@@ -85,6 +70,8 @@ class Savedb
     actions = (['hset', thekey, saveditem, itemobject[thekey]] for thekey of itemobject)
     actions = actions.concat [['zadd', savedset, savetime, saveditem]]
     @addActions actions
+
+class Userdb extends Savedb
 
 
 _doSaveSearch = (savedBy, objects, searchtype, callback) ->
@@ -194,6 +181,36 @@ saveObsv = (payload, req, res, next) ->
 #saved it. we may want to patch that, or just let it be. TODO
 #BUG all this should happen atomically
 
+createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchetypes=null, titlearchetypes=null) ->
+  view = {}
+  #console.log "VIEW", view
+  nsearch = searchkeys.length
+
+  if nsearch is 0
+    view.hassearches = false
+    view.savedsearches = []
+
+  else
+    view.hassearches = true
+
+    makeTemplate = (ctr) ->
+      key = searchkeys[ctr]
+      time = searchtimes[ctr]
+      name = if namearchetyles then namearchetypes[ctr] else null
+      title = if titlearchetypes then titlearchetypes[ctr] else null
+      out =
+        searchuri: key
+        searchtext: searchToText key
+        searchtime: time
+        searchtimestr: timeToText nowDate, time
+        searchctr: ctr
+        searchname: name
+        searchtitle: title
+      return out
+
+    view.savedsearches = (makeTemplate i for i in [0..nsearch-1])
+
+  return view
 # Modify the object view to add in the needed values
 # given the search results. This was originally used with Mustache
 # views - hence the terminology - but the data is now passed
@@ -352,6 +369,27 @@ _doSearch = (email, searchtype, templateCreatorFunc, res, kword, callback, augme
                                 view = templateCreatorFunc nowDate, searches.elements, searches.scores, names, titles, savedBys, savedingroups, savedintags
                                 callback err4, view
 
+_getSavedItems = (email, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
+    nowDate = new Date().getTime()
+    getSortedElementsAndScores false, "saved#{searchtype}:#{email}", (err, searches) ->
+        if err
+            return callback err, searches
+        
+        if augmenthash is null
+            view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
+            callback err, view
+        else
+            redis_client.hmget "saved#{augmenthash.titlefield}", searches.elements..., (err3, titles) ->
+                if err3
+                    console.log "titlefield error"
+                    return callback err3, titles
+                redis_client.hmget "saved#{augmenthash.namefield}", searches.elements..., (err4, names) ->
+                    if err4
+                        console.log "namefield error"
+                        return callback err4, names
+                    view = templateCreatorFunc nowDate, searches.elements, searches.scores, names, titles
+                    callback err4, view
+
 getSavedPubs2 = (req, res, next) ->
   kword = 'savedpubs'
   __fname=kword
@@ -370,84 +408,96 @@ getSavedObsvs2 = (req, res, next) ->
   ifHaveEmail __fname, req, res, (email) ->
       _doSearch email, 'obsv', createSavedObsvTemplates, res, kword, httpcallbackmaker(__fname, req, res, next), {titlefield:'obsvtitles', namefield:'targets'}          
    
+getSavedPubs = (req, res, next) ->
+  console.log __fname = 'savedpubs'
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHaveEmail __fname, req, res, (email) ->
+      _getSavedItems email, 'pub', createSavedPubTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}  
+      
+getSavedSearches = (req, res, next) ->
+  console.log __fname = 'savedsearches'
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHaveEmail __fname, req, res, (email) ->
+      _getSavedItems email, 'search', createSavedSearchTemplates, lastcb
+      
+getSavedObsvs = (req, res, next) ->
+  console.log __fname = 'savedobsvs'
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHaveEmail __fname, req, res, (email) ->
+      _getSavedItems email, 'obsv', createSavedObsvTemplates, lastcb, {titlefield:'obsvtitles', namefield:'targets'}          
+   
 
+
+#BUG NONE OF THIS REMOVAL TRIGGERS ANYTHING WITH GROUPS OR TAGS, YET
 # Remove the list of searchids, associated with the given
 # user cookie, from Redis.
 #
 # At present we require that searchids not be empty; this may
 # be changed.
 
-removeSearches = (res, loginid, group, searchids) ->
+removeSearches = (email, group, searchids, lastcb) ->
   if searchids.length is 0
     console.log "ERROR: removeSearches called with empty searchids list; loginid=#{loginid}"
-    failedRequest res
-    return
+    return lastcb "No searches to delete", null
 
-  redis_client.get "email:#{loginid}", (err, email) ->
-    key = "savedsearch:#{email}"
-    # with Redis v2.4 we will be able to delete multiple keys with
-    # a single zrem call
-    margs = (['zrem', key, sid] for sid in searchids)
-    redis_client.multi(margs).exec (err2, reply) ->
-      console.log "Removed #{searchids.length} searches"
-      successfulRequest res
+  key = "savedsearch:#{email}"
+  # with Redis v2.4 we will be able to delete multiple keys with
+  # a single zrem call
+  margs = (['zrem', key, sid] for sid in searchids)
+  redis_client.multi(margs).exec (err2, reply) ->
+    #if error reurn error, else return true...would be better with better response info
+    return lastcb err2, reply
 
 
 # Similar to removeSearches but removes publications.
 
-removePubs = (res, loginid, group, docids) ->
+removePubs = (email, group, docids, lastcb) ->
   if docids.length is 0
     console.log "ERROR: removePubs called with empty docids list; loginid=#{loginid}"
-    failedRequest res
-    return
+    return lastcb "No pubs to delete", null
 
-  redis_client.get "email:#{loginid}", (err, email) ->
-    console.log ">> removePubs docids=#{docids}"
-    pubkey = "savedpub:#{email}"
-    #titlekey = "savedtitles:#{email}"
-    #bibkey = "savedbibcodes:#{email}"
+  console.log ">> removePubs docids=#{docids}"
+  pubkey = "savedpub:#{email}"
+  #titlekey = "savedtitles:#{email}"
+  #bibkey = "savedbibcodes:#{email}"
 
-    # In Redis 2.4 zrem and hdel can be sent multiple keys
-    margs1 = (['zrem', pubkey, docid] for docid in docids)
-    #margs2 = (['hdel', titlekey, docid] for docid in docids)
-    #margs3 = (['hdel', bibkey, docid] for docid in docids)
-    #margs = margs1.concat margs2, margs3
-    margs=margs1
-    redis_client.multi(margs).exec (err2, reply) ->
-      console.log "Removed #{docids.length} pubs"
-      successfulRequest res
+  # In Redis 2.4 zrem and hdel can be sent multiple keys
+  margs1 = (['zrem', pubkey, docid] for docid in docids)
+  #margs2 = (['hdel', titlekey, docid] for docid in docids)
+  #margs3 = (['hdel', bibkey, docid] for docid in docids)
+  #margs = margs1.concat margs2, margs3
+  margs=margs1
+  redis_client.multi(margs).exec (err2, reply) ->
+    return lastcb err2, reply
 
 
-removeObsvs = (res, loginid, group, docids) ->
+removeObsvs = (email, group, docids, lastcb) ->
   if docids.length is 0
     console.log "ERROR: removeObsvs called with empty docids list; loginid=#{loginid}"
-    failedRequest res
-    return
+    return lastcb "No obsvs to delete", null
 
-  redis_client.get "email:#{loginid}", (err, email) ->
-    console.log ">> removeObsvs docids=#{docids}"
-    obsvkey = "savedobsv:#{email}"
-    # In Redis 2.4 zrem and hdel can be sent multiple keys: fix sometime
-    margs1 = (['zrem', obsvkey, docid] for docid in docids)
-    margs=margs1
-    redis_client.multi(margs).exec (err2, reply) ->
-      console.log "Removed #{docids.length} obsvs"
-      successfulRequest res
+  console.log ">> removeObsvs docids=#{docids}"
+  obsvkey = "savedobsv:#{email}"
+  # In Redis 2.4 zrem and hdel can be sent multiple keys: fix sometime
+  margs1 = (['zrem', obsvkey, docid] for docid in docids)
+  margs=margs1
+  redis_client.multi(margs).exec (err2, reply) ->
+    return lastcb err2, reply
       
 
 
 deleteItem = (funcname, idname, delItems) ->
   return (payload, req, res, next) ->
     console.log ">> In #{funcname}"
-    ifLoggedIn req, res, (loginid) ->
+    ifHavePermissions req, res, ecb, (email) ->
       jsonObj = JSON.parse payload
+      console.log ">> JSON payload=#{payload}"
       delid = jsonObj[idname]
       group='default'
-      console.log "deleteItem: logincookie=#{loginid} item=#{delid}"
       if delid?
-        delItems res, loginid, group, [delid]
+        delItems email, group, [delid], ecb
       else
-        failedRequest res
+        ecb "not delete", null
 
 # Create a function to delete multiple search or publication items
 #   funcname is used to create a console log message of 'In ' + funcname
@@ -458,19 +508,18 @@ deleteItem = (funcname, idname, delItems) ->
 
 deleteItems = (funcname, idname, delItems) ->
   return (payload, req, res, next) ->
-    console.log ">> In #{funcname}"
-    ifLoggedIn req, res, (loginid) ->
+    ecb = httpcallbackmaker(funcname, req, res, next)
+    ifHavePermissions req, res, ecb, (email) ->
       terms = JSON.parse payload
       console.log ">> JSON payload=#{payload}"
-
       action = terms.action
       group=terms.group ? 'default'
       delids = if isArray terms[idname] then terms[idname] else [terms[idname]]
 
       if action is "delete" and delids.length > 0
-        delItems res, loginid, group, delids
+        delItems email, group, delids, ecb
       else
-        failedRequest res
+        ecb "not delete", null
 
 #terms = {action, fqGroupName?, [search|pub|obsv]}        
 deleteItemsWithJSON = (funcname, idname, delItems) ->
@@ -507,6 +556,10 @@ exports.savePubs = savePubs
 exports.saveObsvs = saveObsvs
 
 
+
+exports.getSavedSearches = getSavedSearches
+exports.getSavedPubs = getSavedPubs
+exports.getSavedObsvs = getSavedObsvs
 exports.getSavedSearches2 = getSavedSearches2
 exports.getSavedPubs2 = getSavedPubs2
 exports.getSavedObsvs2 = getSavedObsvs2

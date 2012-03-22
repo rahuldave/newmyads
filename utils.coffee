@@ -39,6 +39,18 @@ ifHaveAuth = (req, res, ecb, cb) ->
         else
             return ecb err, email
 
+ifHavePermissions = (req, res, ecb, cb) ->
+  ifLoggedIn req, res, (loginid) ->
+    redis_client.get "email:#{loginid}", (err, email) ->
+        console.log "email is", email, err
+        if err
+            return ecb err, email
+        #Philosophy: a null result is treated as an error
+        if email
+            return cb email
+        else
+            return ecb err, email
+
 searchToText = (searchTerm) ->
     # lazy way to remove the trailing search term
 
@@ -156,6 +168,7 @@ getSortedElementsAndScores = (flag, key, cb) ->
 
 exports.ifHaveEmail = ifHaveEmail
 exports.ifHaveAuth = ifHaveAuth
+exports.ifHavePermissions = ifHavePermissions
 exports.getSortedElements = getSortedElements
 exports.getSortedElementsAndScores = getSortedElementsAndScores
 exports.timeToText = timeToText
