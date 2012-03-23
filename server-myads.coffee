@@ -102,13 +102,13 @@ configureServer = (config, server) ->
 
 
   #server.use config.SITEPREFIX+'/savedsearches', saved.getSavedSearches
-  server.use config.SITEPREFIX+'/savedsearches2', saved.getSavedSearches2
+  server.use config.SITEPREFIX+'/savedsearches2', saved.getSavedSearches
   server.use config.SITEPREFIX+'/savedsearchesforgroup2', savedgroup.getSavedSearchesForGroup2
   #server.use config.SITEPREFIX+'/savedpubs', saved.getSavedPubs
-  server.use config.SITEPREFIX+'/savedpubs2', saved.getSavedPubs2
+  server.use config.SITEPREFIX+'/savedpubs2', saved.getSavedPubs
   server.use config.SITEPREFIX+'/savedpubsforgroup2', savedgroup.getSavedPubsForGroup2
   #server.use config.SITEPREFIX+'/savedobsvs', saved.getSavedObsvs
-  server.use config.SITEPREFIX+'/savedobsvs2', saved.getSavedObsvs2
+  server.use config.SITEPREFIX+'/savedobsvs2', saved.getSavedObsvs
   server.use config.SITEPREFIX+'/savedobsvsforgroup2', savedgroup.getSavedObsvsForGroup2
 
   #Groupfunctions

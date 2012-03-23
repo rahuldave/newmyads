@@ -9,7 +9,7 @@ accessing information from Redis.
 
 #BUG..where do I do redis quits? I might be losing memory!! Also related to scripts not exiting, surely!
 utils = require("./utils")
-redis_client = utils.getRedisClient()
+CONNECTION = utils.getRedisClient()
 
 requests = require("./requests-myads")
 failedRequest = requests.failedRequest
@@ -38,11 +38,11 @@ isArray = `function (o) {
 };`
 
 
-
+#TODO: custom replies and errorss, not just whats sent back by REDIS
 class Savedb
-  constructor: (client, callback) ->
+  constructor: (client, lastcallback) ->
     @connection = client
-    @callback = callback
+    @lastcallback = lastcallback
     @transaction=[]
 
   addActions: (actions) ->
@@ -52,12 +52,15 @@ class Savedb
   clear: () ->
     @transaction=[]
 
-  execute: (cb=null) ->
+  execute: (cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
     @connection.multi(@transaction).exec (err, reply) =>
       #currently zero transaction ob both error and successful reply
       console.log "@transaction", @transaction
-      callb = if cb then cb else @callback
       @clear()
+      if err
+        return lcallb err, reply
       return callb err, reply
 
   saveItem: (itemobject, itemtype, savedBy) ->
@@ -71,12 +74,42 @@ class Savedb
     actions = actions.concat [['zadd', savedset, savetime, saveditem]]
     @addActions actions
 
-class Userdb extends Savedb
+  getSavedItems: (savetype, savedBy, cb=null, lcb=null) ->
+    savedtype="saved#{savetype}"
+    savedset="saved#{savetype}:#{savedBy}"
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    getSortedElementsAndScores false, savedset, (err, searches) ->
+      #console.log err, searches, '--------------------------------------'
+      if err
+        return lcallb err, searches
+      return callb err, searches
+
+  getArchetypesForSavedItems: (archetypefield, sortedsearches, cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    @connection.hmget archetypefield, sortedsearches.elements..., (err, archetypes) ->
+      if err
+        return lcallb err, archetypes
+      return callb err, archetypes
+
+  #currently we do not delete metadata associated with the item
+  removeItems: (itemkeys, itemtype, savedBy) ->
+    # In Redis 2.4 zrem and hdel can be sent multiple keys
+    savedtype="saved#{itemtype}"
+    savedset="saved#{itemtype}:#{savedBy}"
+    margs1 = (['zrem', savedset, theid] for theid in itemkeys)
+    #margs2 = (['hdel', titlekey, docid] for docid in docids)
+    #margs3 = (['hdel', bibkey, docid] for docid in docids)
+    #actions = margs1.concat margs2, margs3
+    actions=margs1
+    @clear()
+    @addActions actions
 
 
 _doSaveSearch = (savedBy, objects, searchtype, callback) ->
   saveTime = new Date().getTime()
-  savedb = new Savedb(redis_client, callback)
+  savedb = new Savedb(CONNECTION, callback)
   margs=[]
   for idx in [0...objects.length]
     theobject=objects[idx]
@@ -88,7 +121,7 @@ saveSearches = (payload, req, res, next) ->
   console.log __fname="saveSearches"
   console.log "In #{__fname}: cookies=#{req.cookies} payload=#{payload}"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHaveAuth req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (savedBy) ->
       # keep as a multi even though now a single addition
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
@@ -100,7 +133,7 @@ savePubs = (payload, req, res, next) ->
   console.log __fname="savePubs"
   console.log "In #{__fname}: cookies=#{req.cookies} payload=#{payload}"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHaveAuth req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (savedBy) ->
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
       o2s = ({savedbibcodes:pubbibcode, savedtitles:pubtitle, savedpub:savedpub} for {savedpub, pubbibcode, pubtitle} in objectsToSave)
@@ -110,7 +143,7 @@ saveObsvs = (payload, req, res, next) ->
   console.log __fname="saveObsvs"
   console.log "In #{__fname}: cookies=#{req.cookies} payload=#{payload}"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHaveAuth req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (savedBy) ->
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
       o2s = ({savedtargets:obsvtarget, savedobsvtitles:obsvtitle, savedobsv:savedobsv} for {savedobsv, obsvtarget, obsvtitle} in objectsToSave)
@@ -185,18 +218,20 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
   view = {}
   #console.log "VIEW", view
   nsearch = searchkeys.length
-
+  view.searchtype = searchtype
+  savedkey="saved#{searchtype}s"
+  haskey="has#{searchtype}s"
   if nsearch is 0
-    view.hassearches = false
-    view.savedsearches = []
+    view[haskey] = false
+    view[savedkey] = []
 
   else
-    view.hassearches = true
+    view[haskey]= true
 
     makeTemplate = (ctr) ->
       key = searchkeys[ctr]
       time = searchtimes[ctr]
-      name = if namearchetyles then namearchetypes[ctr] else null
+      name = if namearchetypes then namearchetypes[ctr] else null
       title = if titlearchetypes then titlearchetypes[ctr] else null
       out =
         searchuri: key
@@ -208,7 +243,7 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
         searchtitle: title
       return out
 
-    view.savedsearches = (makeTemplate i for i in [0..nsearch-1])
+    view[savedkey] = (makeTemplate i for i in [0..nsearch-1])
 
   return view
 # Modify the object view to add in the needed values
@@ -371,24 +406,19 @@ _doSearch = (email, searchtype, templateCreatorFunc, res, kword, callback, augme
 
 _getSavedItems = (email, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
-    getSortedElementsAndScores false, "saved#{searchtype}:#{email}", (err, searches) ->
-        if err
-            return callback err, searches
-        
-        if augmenthash is null
-            view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
-            callback err, view
-        else
-            redis_client.hmget "saved#{augmenthash.titlefield}", searches.elements..., (err3, titles) ->
-                if err3
-                    console.log "titlefield error"
-                    return callback err3, titles
-                redis_client.hmget "saved#{augmenthash.namefield}", searches.elements..., (err4, names) ->
-                    if err4
-                        console.log "namefield error"
-                        return callback err4, names
-                    view = templateCreatorFunc nowDate, searches.elements, searches.scores, names, titles
-                    callback err4, view
+    savedb = new Savedb(CONNECTION, callback)
+    savedb.getSavedItems searchtype, email,  (err, searches) ->
+      console.log searchtype, '================', searches
+      if augmenthash is null
+          view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
+          savedb.lastcallback err, view
+      else
+          savedb.getArchetypesForSavedItems "saved#{augmenthash.titlefield}", searches, (err3, titles) ->
+            console.log 'ITLES', titles
+            savedb.getArchetypesForSavedItems "saved#{augmenthash.namefield}", searches, (err4, names) ->
+              console.log 'AMES', names, 'BEEP', searches
+              view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores, names, titles
+              savedb.lastcallback err4, view
 
 getSavedPubs2 = (req, res, next) ->
   kword = 'savedpubs'
@@ -412,19 +442,19 @@ getSavedPubs = (req, res, next) ->
   console.log __fname = 'savedpubs'
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHaveEmail __fname, req, res, (email) ->
-      _getSavedItems email, 'pub', createSavedPubTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}  
+      _getSavedItems email, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}  
       
 getSavedSearches = (req, res, next) ->
   console.log __fname = 'savedsearches'
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHaveEmail __fname, req, res, (email) ->
-      _getSavedItems email, 'search', createSavedSearchTemplates, lastcb
+      _getSavedItems email, 'search', createSavedTemplates, lastcb
       
 getSavedObsvs = (req, res, next) ->
   console.log __fname = 'savedobsvs'
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHaveEmail __fname, req, res, (email) ->
-      _getSavedItems email, 'obsv', createSavedObsvTemplates, lastcb, {titlefield:'obsvtitles', namefield:'targets'}          
+      _getSavedItems email, 'obsv', createSavedTemplates, lastcb, {titlefield:'obsvtitles', namefield:'targets'}          
    
 
 
@@ -437,7 +467,6 @@ getSavedObsvs = (req, res, next) ->
 
 removeSearches = (email, group, searchids, lastcb) ->
   if searchids.length is 0
-    console.log "ERROR: removeSearches called with empty searchids list; loginid=#{loginid}"
     return lastcb "No searches to delete", null
 
   key = "savedsearch:#{email}"
@@ -453,7 +482,6 @@ removeSearches = (email, group, searchids, lastcb) ->
 
 removePubs = (email, group, docids, lastcb) ->
   if docids.length is 0
-    console.log "ERROR: removePubs called with empty docids list; loginid=#{loginid}"
     return lastcb "No pubs to delete", null
 
   console.log ">> removePubs docids=#{docids}"
@@ -473,7 +501,6 @@ removePubs = (email, group, docids, lastcb) ->
 
 removeObsvs = (email, group, docids, lastcb) ->
   if docids.length is 0
-    console.log "ERROR: removeObsvs called with empty docids list; loginid=#{loginid}"
     return lastcb "No obsvs to delete", null
 
   console.log ">> removeObsvs docids=#{docids}"
@@ -485,17 +512,24 @@ removeObsvs = (email, group, docids, lastcb) ->
     return lastcb err2, reply
       
 
+removeItems = (email, itemtype, itemids, lastcb) ->
+  if itemids.length is 0
+    return lastcb "No #{itemtype}s to delete", null
+  savedb = new Savedb(CONNECTION, lastcb)
+  savedb.removeItems(itemids, itemtype, email) 
+  savedb.execute()
 
-deleteItem = (funcname, idname, delItems) ->
+deleteItem = (funcname, searchtype, delItemsFunc) ->
+  idname="#{searchtype}id"
   return (payload, req, res, next) ->
     console.log ">> In #{funcname}"
+    ecb = httpcallbackmaker(funcname, req, res, next)
     ifHavePermissions req, res, ecb, (email) ->
-      jsonObj = JSON.parse payload
+      terms = JSON.parse payload
       console.log ">> JSON payload=#{payload}"
-      delid = jsonObj[idname]
-      group='default'
+      delid = terms[idname]
       if delid?
-        delItems email, group, [delid], ecb
+        delItemsFunc email, searchtype, [delid], ecb
       else
         ecb "not delete", null
 
@@ -506,45 +540,33 @@ deleteItem = (funcname, idname, delItems) ->
 #     in the JSON payload
 #   delItems is the routine we call to delete multiple elements
 
-deleteItems = (funcname, idname, delItems) ->
+deleteItems = (funcname, searchtype, delItemsFunc) ->
   return (payload, req, res, next) ->
+    console.log ">> In #{funcname}"
     ecb = httpcallbackmaker(funcname, req, res, next)
     ifHavePermissions req, res, ecb, (email) ->
       terms = JSON.parse payload
       console.log ">> JSON payload=#{payload}"
       action = terms.action
-      group=terms.group ? 'default'
       delids = if isArray terms[idname] then terms[idname] else [terms[idname]]
 
       if action is "delete" and delids.length > 0
-        delItems email, group, delids, ecb
+        delItemsFunc email, searchtype, delids, ecb
       else
         ecb "not delete", null
 
-#terms = {action, fqGroupName?, [search|pub|obsv]}        
-deleteItemsWithJSON = (funcname, idname, delItems) ->
-  return (terms, req, res, next) ->
-    console.log ">> In #{funcname}"
-    ifHaveEmail funcname, req, res, (email) ->
-      action = terms.action
-      group=terms.fqGroupName ? 'default'
-      delids = if isArray terms.items then terms.items else [terms.items]
 
-      if action is "delete" and delids.length > 0
-        delItems email, group, delids, httpcallbackmaker(funcname, req, res, next)
-      else
-        failedRequest res
 
 
 
     
-exports.deleteSearch   = deleteItem "deleteSearch", "searchid", removeSearches
-exports.deletePub      = deleteItem "deletePub",    "pubid",    removePubs
-exports.deleteObsv      = deleteItem "deleteObsv",    "obsvid",    removeObsvs
+exports.deleteSearch   = deleteItem "deleteSearch", "search", removeItems
+exports.deletePub      = deleteItem "deletePub",    "pub",    removeItems
+exports.deleteObsv      = deleteItem "deleteObsv",    "obsv",    removeItems
 
-exports.deleteSearches = deleteItems "deleteSearches", "searchid", removeSearches
-exports.deletePubs     = deleteItems "deletePubs",     "pubid",    removePubs
-exports.deleteObsvs     = deleteItems "deleteObsvs",     "obsvid",    removeObsvs
+exports.deleteSearches = deleteItems "deleteSearches", "search", removeItems
+exports.deletePubs     = deleteItems "deletePubs",     "pub",    removeItems
+exports.deleteObsvs     = deleteItems "deleteObsvs",     "obsv",    removeItems
 
 
 exports.saveSearch = saveSearch
