@@ -103,7 +103,7 @@ class Savedb
     #margs3 = (['hdel', bibkey, docid] for docid in docids)
     #actions = margs1.concat margs2, margs3
     actions=margs1
-    @clear()
+    #@clear()
     @addActions actions
 
 
@@ -516,6 +516,7 @@ removeItems = (email, itemtype, itemids, lastcb) ->
   if itemids.length is 0
     return lastcb "No #{itemtype}s to delete", null
   savedb = new Savedb(CONNECTION, lastcb)
+  savedb.clear()
   savedb.removeItems(itemids, itemtype, email) 
   savedb.execute()
 
