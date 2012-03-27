@@ -8,8 +8,7 @@ accessing information from Redis.
 #in the value of a key means that we cant really delete it, because someone has a reference to it.
 
 #BUG..where do I do redis quits? I might be losing memory!! Also related to scripts not exiting, surely!
-utils = require("./utils")
-CONNECTION = utils.getRedisClient()
+
 
 requests = require("./requests-myads")
 failedRequest = requests.failedRequest
@@ -17,6 +16,8 @@ successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
 httpcallbackmaker = requests.httpcallbackmaker
 
+utils = require("./utils")
+CONNECTION = utils.getRedisClient()
 ifHaveEmail = utils.ifHaveEmail
 ifHaveAuth = utils.ifHaveAuth
 ifHavePermissions = utils.ifHavePermissions
@@ -441,19 +442,19 @@ getSavedObsvs2 = (req, res, next) ->
 getSavedPubs = (req, res, next) ->
   console.log __fname = 'savedpubs'
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHaveEmail __fname, req, res, (email) ->
+  ifHavePermissions req, res, lastcb, (email) ->
       _getSavedItems email, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}  
       
 getSavedSearches = (req, res, next) ->
   console.log __fname = 'savedsearches'
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHaveEmail __fname, req, res, (email) ->
+  ifHavePermissions req, res, lastcb, (email) ->
       _getSavedItems email, 'search', createSavedTemplates, lastcb
       
 getSavedObsvs = (req, res, next) ->
   console.log __fname = 'savedobsvs'
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHaveEmail __fname, req, res, (email) ->
+  ifHavePermissions req, res, lastcb, (email) ->
       _getSavedItems email, 'obsv', createSavedTemplates, lastcb, {titlefield:'obsvtitles', namefield:'targets'}          
    
 

@@ -1,5 +1,5 @@
 
-CONNECTION = require("redis").createClient()
+#@connection = require("redis").createClient()
 isArray = `function (o) {
     return (o instanceof Array) ||
         (Object.prototype.toString.apply(o) === '[object Array]');
@@ -29,11 +29,11 @@ class Groupdb
         return lcallb err, reply
       return callb err, reply
 
-    #the current user creates a group, with himself in it
-    #sets up a group hash and a group set and an invitations set param=groupname
-    #sets it to email/groupname
+  #the current user creates a group, with himself in it
+  #sets up a group hash and a group set and an invitations set param=groupname
+  #sets it to email/groupname
 
-  create_group = (email, rawGroupName) ->
+  create_group: (email, rawGroupName) ->
     changeTime = new Date().getTime()
     fqGroupName="#{email}/#{rawGroupName}"
     margs = [
@@ -45,159 +45,150 @@ class Groupdb
     @addActions margs
         
 
-#you have to be added by somebody else to a group    
-#add another users comma seperated emails to the invitation set param=emails
-#TODO: no retraction of invitation as yet
+  #you have to be added by somebody else to a group    
+  #add another users comma seperated emails to the invitation set param=emails
+  #TODO: no retraction of invitation as yet
 
-  add_invitation_to_group = (email, fqGroupName, userNames, lcb=null)->
+  add_invitation_to_group: (email, fqGroupName, userNames, lcb=null)->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
-    @connection.hget "group:#{fqGroupName}", 'owner', (err, reply) -> 
-        if err
-            return lcallb err, reply
-        if reply is email
-            @clear()
-            margs1=( ['sadd', "invitations:#{fqGroupName}", user] for user in userNames)
-            #bit loose and fast here as users may not exist
-            margs2=(['sadd', "invitationsto:#{user}", fqGroupName] for user in userNames)
-            margs=margs1.concat margs2
-            @addActions margs
-        else
-            return lcallb err, reply
+    @is_owner_of_group_p email, fqGroupName, (err, owner_p) =>
+      if owner_p
+        margs1=( ['sadd', "invitations:#{fqGroupName}", user] for user in userNames)
+        #bit loose and fast here as users may not exist
+        margs2=(['sadd', "invitationsto:#{user}", fqGroupName] for user in userNames)
+        margs=margs1.concat margs2
+        @addActions margs
+      else
+        return lcallb "ERROR: Not owner of Group", null
 
-  remove_invitation_from_group = (email, fqGroupName, userNames, lcb=null) ->
+  remove_invitation_from_group: (email, fqGroupName, userNames, lcb=null) ->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
-    @connection.hget "group:#{fqGroupName}", 'owner', (err, reply) -> 
-        if err
-            return lcallb err, reply
-        if reply is email
-            margs1=( ['srem', "invitations:#{fqGroupName}", user] for user in userNames)
-            #bit loose and fast here as users may not exist
-            margs2=(['srem', "invitationsto:#{user}", fqGroupName] for user in userNames)
-            margs=margs1.concat margs2
-            @addActions margs
-        else
-            return lcallb err, reply
+    @is_owner_of_group_p email, fqGroupName, (err, owner_p) =>
+      if owner_p
+        margs1=( ['srem', "invitations:#{fqGroupName}", user] for user in userNames)
+        #bit loose and fast here as users may not exist
+        margs2=(['srem', "invitationsto:#{user}", fqGroupName] for user in userNames)
+        margs=margs1.concat margs2
+        @addActions margs
+      else
+        return lcallb "ERROR: Not owner of Group", null
         
 
-  accept_invitation_to_group = (email, fqGroupName, lcb=null) ->
+  accept_invitation_to_group: (email, fqGroupName, lcb=null) ->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
-    @connection.sismember "invitations:#{fqGroupName}", email, (err, reply)->
-        if err
-            return lcallb err, reply
-        if reply
-            margs = [
-                ['sadd', "members:#{fqGroupName}", email],
-                ['srem', "invitations:#{fqGroupName}", email],
-                ['sadd', "memberof:#{email}", fqGroupName],
-                ['srem', "invitationsto:#{email}", fqGroupName]
-            ]
-            @addActions margs
-        else
-            return lcallb err, reply
+    @has_invitation_to_group_p email, fqGroupName, (err, invited_p) =>
+      if invited_p
+        margs = [
+            ['sadd', "members:#{fqGroupName}", email],
+            ['srem', "invitations:#{fqGroupName}", email],
+            ['sadd', "memberof:#{email}", fqGroupName],
+            ['srem', "invitationsto:#{email}", fqGroupName]
+        ]
+        @addActions margs
+      else
+        return lcallb "ERROR: Not invited to this group", null
 
 
-  decline_invitation_to_group = (email, fqGroupName, lcb=null) ->
+  decline_invitation_to_group: (email, fqGroupName, lcb=null) ->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
 
-    @connection.sismember "invitations:#{fqGroupName}", email, (err, reply)->
-        if err
-            return lcallb err, reply
-        if reply
-            margs = [
-                ['srem', "invitations:#{fqGroupName}", email],
-                ['srem', "invitationsto:#{email}", fqGroupName]
-            ]
-            @addActions margs
-        else
-            return lcallb err, reply
+    @has_invitation_to_group_p email, fqGroupName, (err, invited_p) =>
+      if invited_p
+        margs = [
+            ['srem', "invitations:#{fqGroupName}", email],
+            ['srem', "invitationsto:#{email}", fqGroupName]
+        ]
+        @addActions margs
+      else
+        return lcallb "ERROR: Not invited to this group", null
 
   #GET
-  pending_invitation_to_groups = (email, cb=null, lcb=null) -> 
+  pending_invitation_to_groups: (email, cb=null, lcb=null) -> 
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    @connection.smembers "invitationsto:#{email}", callb
+    @connection.smembers "invitationsto:#{email}", (err, reply) =>
+      if err
+        lcallb err, reply
+      return callb err, reply
 
   #GET                    
-  member_of_groups = (email, cb=null, lcb=null) -> 
+  member_of_groups: (email, cb=null, lcb=null) -> 
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    @connection.smembers "memberof:#{email}", callb
+    @connection.smembers "memberof:#{email}", (err, reply) =>
+      if err
+        lcallb err, reply
+      return callb err, reply
       
   #GET                    
-  owner_of_groups = (email, cb=null, lcb=null) ->
+  owner_of_groups: (email, cb=null, lcb=null) ->
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    @connection.smembers "ownerof:#{email}", callb   
+    @connection.smembers "ownerof:#{email}", (err, reply) =>
+      if err
+        lcallb err, reply
+      return callb err, reply   
   #only owner of group can do this   params=groupname, username
   #BUG: currently not checking if any random people are being tried to be removed
   #will silently fail
 
-  #Also we wont remove anything the user added to group
+  #Also we wont remove anything the user added to group. So all hat should happen with PUB/SUB
+  #where? And how? other users should still have access to that stuff.
 
-  remove_user_from_group = (email, fqGroupName, userNames, lcb=null) ->
+
+  remove_user_from_group: (email, fqGroupName, userNames, lcb=null) ->
     lcallb = if lcb then lcb else @lastcallback
-    @connection.hget "group:#{fqGroupName}", 'owner', (err, reply) -> 
-        if err
-            return lcallb err, reply
-        if reply is email
-            margs1=(['srem', "members:#{fqGroupName}", user] for user in userNames)
-            margs2=(['srem', "memberof:#{user}", fqGroupName] for user in userNames)
-            margs=margs1.concat margs2
-            @addActions margs
-        else
-            return lcallb err, reply
+    @is_owner_of_group_p email, fqGroupName, (e, owner_p) =>
+      if owner_p
+        margs1=(['srem', "members:#{fqGroupName}", user] for user in userNames)
+        margs2=(['srem', "memberof:#{user}", fqGroupName] for user in userNames)
+        margs=margs1.concat margs2
+        @addActions margs
+      else
+        return lcallb "ERROR: Not owner of Group", null
                   
 
 
   #current owner if logged on can set someone else as owner param=newOwner, group
-  change_ownership_of_group = (email, fqGroupName, newOwner, lcb=null) ->
+  #WE DO NOT do any asking of the recipient. is this a BUG?
+  change_ownership_of_group: (email, fqGroupName, newOwner, lcb=null) ->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
-    @connection.hget "group:#{fqGroupName}", 'owner', (err, reply) -> 
-        if err
-            return lcallb err, reply
-        if reply is email
-            margs=[
-                ['hset', "group:#{fqGroupName}", 'owner', newOwner],
-                ['hset', "group:#{fqGroupName}", 'changedAt', changeTime],
-                ['srem', "owner:#{email}", fqGroupName],
-                ['sadd', "owner:#{newOwner}", fqGroupName]
-            ]
-            @addActions margs
-        else
-            return lcallb err, reply
-      
+    @is_owner_of_group_p email, fqGroupName, (e, owner_p) =>
+      if owner_p
+        margs=[
+            ['hset', "group:#{fqGroupName}", 'owner', newOwner],
+            ['hset', "group:#{fqGroupName}", 'changedAt', changeTime],
+            ['srem', "owner:#{email}", fqGroupName],
+            ['sadd', "owner:#{newOwner}", fqGroupName]
+        ]
+        @addActions margs
+      else
+        return lcallb "ERROR: Not owner of Group", null
 
   #remove currently logged in user from group. param=group
   #this will not affext one's existing assets in group
   #Stuff you saved in group should remain (does now) TODO
-
   #BUG: should stop you from doing this if you are the owner
-  remove_oneself_from_group = (email, fqGroupName, lcb=null) ->
+  remove_oneself_from_group: (email, fqGroupName, lcb=null) ->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
-    @connection.sismember "members:#{fqGroupName}", email, (err, reply)->
-        if err
-            return lcallb err, reply
-        if reply
-            CONNECTION.hget "group:#{fqGroupName}", 'owner', (err2, reply2) -> 
-                if err2
-                    return lcallb err2, reply2
-                if reply2 isnt email
-                    margs = [
-                        ['srem', "members:#{fqGroupName}", email],
-                        ['srem', "memberof:#{email}", fqGroupName]
-                    ]
-                    @addActions margs
-                else
-                    console.log "here", email, err2, reply2
-                    return lcallb err2, reply2
+    @is_member_of_group_p email, fqGroupName, (e1, member_p) => 
+      if not member_p
+        return lcallb "ERROR: Not member of group", null
+      @is_owner_of_group_p email, fqGroupName, (e2, owner_p) =>
+        if member_p and not owner_p
+          margs = [
+              ['srem', "members:#{fqGroupName}", email],
+              ['srem', "memberof:#{email}", fqGroupName]
+          ]
+          @addActions margs
         else
-            return lcallb err, reply
+          return lcallb "ERROR: owner cannot remove himself/herself", null
 
 
         #fqGroupName="#{email}/#{rawGroupName}"
@@ -214,12 +205,10 @@ class Groupdb
 
   #BUG How about deleting in savedInGroups: delete members, invitations from the users
   #or should a group archive
-  delete_group=(email, fqGroupName, lcb=null)->
+  delete_group: (email, fqGroupName, lcb=null)->
     lcallb = if lcb then lcb else @lastcallback
-    @connection.hget "group:#{fqGroupName}", 'owner', (err, reply) -> 
-      if err
-          return lcallb err, reply
-      if reply is email
+    @is_owner_of_group_p email, fqGroupName, (e, owner_p) =>
+      if owner_p
           #how about individual deletions; pubsub? or just mothball with a flag?
           margs = [
               ['del', "savedsearch:#{fqGroupName}"],
@@ -234,57 +223,94 @@ class Groupdb
           ]
           @addActions margs
       else
-          return lcallb err, reply
+          return lcallb "ERROR: Not owner of Group", null
 
 
 
   #GET
-  get_members_of_group = (email, wantedGroup, cb=null, lcb=null) ->
+  #any member of group can get members of group
+  get_members_of_group: (email, wantedGroup, cb=null, lcb=null) ->
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    CONNECTION.sismember "members:#{wantedGroup}", email, (err, reply) ->
-      if err
-          return lcallb err, reply
-      if reply    
-          CONNECTION.smembers "members:#{wantedGroup}", callb
+    @is_member_of_group_p email, wantedGroup, (e, member_p) =>
+      if member_p
+        console.log '000;;;;;;;;;;;;;;;;;;;;;'
+        @connection.smembers "members:#{wantedGroup}", (err, reply) =>
+          if err
+            lcallb err, reply
+          return callb err, reply
       else
-          return lcallb err, reply 
+        return lcallb "ERROR: Not member of Group", null
 
-  #GET currently let anyone get BUG later impose owner
-  get_invitations_to_group = (email, wantedGroup, cb=null, lcb=null) ->
-    lcallb = if lcb then lcb else @lastcallback
-    callb = if cb then cb else @lastcallback
-    CONNECTION.hget "group:#{wantedGroup}", 'owner', (err, reply) ->
-      if err
-          return lcallb err, reply
-      if reply is email    
-          CONNECTION.smembers "invitations:#{wantedGroup}", callb
-      else
-          return lcallb err, reply                
   #GET
-  get_group_info = (email, wantedGroup, cb=null, lcb=null) ->
+  #only owner can get invitations to group
+  get_invitations_to_group: (email, wantedGroup, cb=null, lcb=null) ->
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    CONNECTION.sismember "members:#{wantedGroup}", email, (err, reply) ->
-      if err
-          return lcallb err, reply
-      if reply    
-          CONNECTION.hgetall "group:#{wantedGroup}", callb
+    @is_owner_of_group_p email, wantedGroup, (e, owner_p) =>
+      if owner_p    
+        @connection.smembers "invitations:#{wantedGroup}", (err, reply) =>
+          if err
+            lcallb err, reply
+          return callb err, reply
       else
-          CONNECTION.sismember "invitations:#{wantedGroup}", email, (err2, reply2) ->
-              if err2
-                  return lcallb err2, reply2
-              if reply2    
-                  CONNECTION.hgetall "group:#{wantedGroup}", callb
-              else
-                  return lcallb err2, reply2
+        return lcallb "ERROR: Not owner of Group", null
+
+
+  #GET
+  is_member_of_group_p: (email, wantedGroup, cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    @connection.sismember "members:#{wantedGroup}", email, (err, reply) =>
+      if err
+        return lcallb err, reply
+      if reply#is
+        callb null, true
+      else
+        callb null, false
+  #GET
+  has_invitation_to_group_p: (email, wantedGroup, cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    @connection.sismember "invitations:#{wantedGroup}", email, (err, reply) =>
+      if err
+        return lcallb err, reply
+      if reply#is
+        callb null, true
+      else
+        callb null, false
+  #GET
+  is_owner_of_group_p: (email, wantedGroup, cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    @connection.hget "group:#{wantedGroup}", 'owner', (err, reply) => 
+      if err
+        return lcallb err, reply
+      if reply is email
+        callb null, true
+      else
+        callb null, false  
+
+  #GET
+  get_group_info: (email, wantedGroup, cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    @is_member_of_group_p email, wantedGroup, (e1, member_p) =>
+      if member_p  
+        @connection.hgetall "group:#{wantedGroup}", (err, reply) =>
+          if err
+            return lcallb err, reply
+          else
+            return callb reply
+      else
+        @has_invitation_to_group_p email, wantedGroup, (e2, invited_p) =>
+          if invited_p    
+            @connection.hgetall "group:#{wantedGroup}", callb
+          else
+            return lcallb "ERROR: not member or invitee to group", null
         
 
 
-elt={}
-
-elt.create_group=create_group
-elt.delete_group=delete_group
-elt.add_invitation_to_group=add_invitation_to_group
-elt.remove_invitation_from_group=remove_invitation_from_group
+exports.getGroupDb = (conn, lcb) ->
+  return new Groupdb(conn, lcb)
 #exports.consolecallbackmaker=consolecallbackmaker
