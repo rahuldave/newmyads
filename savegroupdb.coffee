@@ -21,6 +21,7 @@ class Savegroupdb
     @lastcallback = lastcallback
     @transaction=[]
     @gdb = groupdb.getGroupDb client, lastcallback
+    @sdb = savedb.getSaveDb client, lastcallback
 
   addActions: (actions) ->
     actionlist = if isArray actions then actions else [actions]
@@ -41,6 +42,7 @@ class Savegroupdb
       return callb err, reply
 
   #dont check for membership here otherwise we will do it twice
+  #since its only people in this group, this is not a sb query
   getSavedBysForItems: (fqGroupName, saveditems, cb=null, lcb=null) ->
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
@@ -113,7 +115,7 @@ class Savegroupdb
           return callb err, searches
 
 
-  removeItemsFromGroup = (email, group, searchtype, searchids, callback) ->
+  removeItemsFromGroup = (email, group, searchtype, searchids) ->
     #Tags are not handled BUG
     keyemail = "saved#{searchtype}:#{email}"
     keygroup = "saved#{searchtype}:#{group}"
@@ -154,5 +156,5 @@ class Savegroupdb
             @addActions margs
 
 
-exports.getGroupDb = (conn, lcb) ->
-  return new Groupdb(conn, lcb)
+exports.getSaveGroupDb = (conn, lcb) ->
+  return new Savegroupdb(conn, lcb)

@@ -120,7 +120,7 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
 
 _getSavedItems = (email, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
-    sdb=savedb.getSaveDb(CONNECTION, lastcb)
+    sdb=savedb.getSaveDb(CONNECTION, callback)
     sdb.getSavedItems searchtype, email,  (err, searches) ->
       console.log searchtype, '================', searches
       if augmenthash is null

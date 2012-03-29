@@ -48,20 +48,31 @@ isArray = `function (o) {
               
 saveSearchesToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="saveSearchestoGroup"
-  ifHaveEmail __fname, req, res, (savedBy) ->
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (savedBy) ->
       # keep as a multi even though now a single addition
-      _doSaveSearchToGroup savedBy, fqGroupName, objectsToSave, 'search',  httpcallbackmaker(__fname, req, res, next)
+      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb.saveItemsToGroup savedBy, fqGroupName, objectsToSave, 'search'
+      sgdb.execute()
 
 
 savePubsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="savePubsToGroup"
-  ifHaveEmail __fname, req, res, (savedBy) ->
-     _doSaveSearchToGroup savedBy, fqGroupName, objectsToSave, 'pub', httpcallbackmaker(__fname, req, res, next)
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (savedBy) ->
+      # keep as a multi even though now a single addition
+      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb.saveItemsToGroup savedBy, fqGroupName, objectsToSave, 'pub'
+      sgdb.execute()
       
 saveObsvsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="saveObsvToGroup"
-  ifHaveEmail __fname, req, res, (savedBy) ->
-      _doSaveSearchToGroup savedBy, fqGroupName, objectsToSave, 'obsv', httpcallbackmaker(__fname, req, res, next)
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (savedBy) ->
+      # keep as a multi even though now a single addition
+      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb.saveItemsToGroup savedBy, fqGroupName, objectsToSave, 'obsv'
+      sgdb.execute()
             
 
 
@@ -98,70 +109,60 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
 
   return view
   
-_getSavedItems = (email, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
+_getSavedItemsFromGroup = (email, groupname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
-    savedb = new Savedb(CONNECTION, callback)
-    savedb.getSavedItems searchtype, email,  (err, searches) ->
+    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, callback)
+    sgdb.getSavedItemsForGroup email, groupname, searchtype,  (err, searches) ->
       console.log searchtype, '================', searches
       if augmenthash is null
           view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
-          savedb.lastcallback err, view
+          sgdb.lastcallback err, view
       else
-          savedb.getArchetypesForSavedItems "saved#{augmenthash.titlefield}", searches, (err3, titles) ->
+          sgdb.sdb.getArchetypesForSavedItems "saved#{augmenthash.titlefield}", searches, (err3, titles) ->
             console.log 'ITLES', titles
-            savedb.getArchetypesForSavedItems "saved#{augmenthash.namefield}", searches, (err4, names) ->
+            sgdb.sdb.getArchetypesForSavedItems "saved#{augmenthash.namefield}", searches, (err4, names) ->
               console.log 'AMES', names, 'BEEP', searches
               view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores, names, titles
-              savedb.lastcallback err4, view
+              sgdb.lastcallback err4, view
 
 
-getSavedSearchesForGroup2 = (req, res, next) ->
-  kword = 'savedsearchesforgroup'
-  __fname=kword
+getSavedSearchesForGroup = (req, res, next) ->
+  console.log __fname = 'savedsearchesforgroup'
   fqGroupName = req.query.fqGroupName
-  ifHaveEmail __fname, req, res, (email) ->
-      _doSearchForGroup email, fqGroupName, 'search', createSavedSearchTemplates, res, kword, httpcallbackmaker(__fname, req, res, next)
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (email) ->
+    _getSavedItemsFromGroup email, fqGroupName, 'search', createSavedTemplates, lastcb
   
   
 
 
   
-getSavedPubsForGroup2 = (req, res, next) ->
-  kword = 'savedpubsforgroup'
-  __fname=kword
+getSavedPubsForGroup = (req, res, next) ->
+  console.log __fname = 'savedpubsforgroup'
   fqGroupName = req.query.fqGroupName
-  ifHaveEmail __fname, req, res, (email) ->
-        _doSearchForGroup email, fqGroupName, 'pub', createSavedPubTemplates, res, kword, 
-                httpcallbackmaker(__fname, req, res, next), {titlefield:'titles', namefield:'bibcodes'}
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (email) ->
+    _getSavedItemsFromGroup email, fqGroupName, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}
 
   
   
-getSavedObsvsForGroup2 = (req, res, next) ->
-  kword = 'savedobsvsforgroup'
+getSavedObsvsForGroup = (req, res, next) ->
+  console.log __fname = 'savedobsvsforgroup'
   fqGroupName = req.query.fqGroupName
-  __fname=kword
-  ifHaveEmail __fname, req, res, (email) ->
-        _doSearchForGroup email, fqGroupName, 'obsv', createSavedObsvTemplates, res, kword, httpcallbackmaker(__fname, req, res, next),
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (email) ->
+    _getSavedItemsFromGroup email, fqGroupName, 'obsv', createSavedTemplates, lastcb,
                     {titlefield:'obsvtitles', namefield:'targets'}
 
 
 
 #BUG How about deletion from savedInGroups hash
-
+removeItemsFromGroup = (email, group, searchtype, searchids, lastcb) ->
+  sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+  sgdb.removeItemsFromGroup email, group, searchtype, searchids
+  sgdb.execute()
                     
-removeSearchesFromGroup = (email, group, searchids, callback) ->
-    _doRemoveSearchesFromGroup(email, group, 'search', searchids, callback)
-    #if savedBy is you, you must be a menber of the group so dont test membership of group
-    #shortcircuit by getting those searchids which the user herself has saved
-    
 
-removePubsFromGroup = (email, group, docids, callback) ->
-    _doRemoveSearchesFromGroup(email, group, 'pub', docids, callback)
-
-
-      
-removeObsvsFromGroup = (email, group, obsids, callback) ->
-   _doRemoveSearchesFromGroup(email, group, 'obsv', obsids, callback)
 # Create a function to delete a single search or publication
 #   funcname is used to create a console log message of 'In ' + funcname
 #     on entry to the function
@@ -170,26 +171,27 @@ removeObsvsFromGroup = (email, group, obsids, callback) ->
 #   delItems is the routine we call to delete multiple elements
 
 
-
-#terms = {action, fqGroupName?, [search|pub|obsv]}        
-deleteItemsWithJSON = (funcname, idname, delItems) ->
+#terms = {action, fqGroupName?, [search|pub|obsv]}
+#Because of post payload has been parsed into JSON for us.  
+#Q is payload pub or items? seems its items      
+deleteItemsWithJSON = (funcname, searchtype, delItemsFunc) ->
   return (terms, req, res, next) ->
     console.log ">> In #{funcname}"
-    ifHaveEmail funcname, req, res, (email) ->
+    ifHavePermissions req, res, ecb, (email) ->
       action = terms.action
       group=terms.fqGroupName ? 'default'
       delids = if isArray terms.items then terms.items else [terms.items]
 
       if action is "delete" and delids.length > 0
-        delItems email, group, delids, httpcallbackmaker(funcname, req, res, next)
+        delItemsFunc email, group, searchtype, delids, ecb
       else
-        failedRequest res
+        ecb "not delete", null
 
 
 
-exports.deleteSearchesFromGroup = deleteItemsWithJSON "deleteSearchesFromGroup", "searches", removeSearchesFromGroup
-exports.deletePubsFromGroup     = deleteItemsWithJSON "deletePubsFromGroup",     "pubs",    removePubsFromGroup
-exports.deleteObsvsFromGroup     = deleteItemsWithJSON "deleteObsvsFromGroup",     "obsvs",    removeObsvsFromGroup
+exports.deleteSearchesFromGroup = deleteItemsWithJSON "deleteSearchesFromGroup", "search", removeItemsFromGroup
+exports.deletePubsFromGroup     = deleteItemsWithJSON "deletePubsFromGroup",     "pub",    removeItemsFromGroup
+exports.deleteObsvsFromGroup     = deleteItemsWithJSON "deleteObsvsFromGroup",     "obsv",    removeItemsFromGroup
 
 
 exports.saveSearchesToGroup = saveSearchesToGroup
