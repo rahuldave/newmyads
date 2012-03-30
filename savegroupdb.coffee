@@ -58,18 +58,28 @@ class Savegroupdb
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
     margs=(['hget', "savedInGroups:#{searchtype}", saveditem] for saveditem in saveditems)
-    @connection.multi(margs).exec (err, replies) ->
+    @connection.multi(margs).exec (err, replies) =>
       if err2
         return lcallb err, replies
       else
         groups = (lstorempty ele  for ele in replies)
         callb err, groups
 
+  getGroupsSavedInForItemsAndUser: (email, searchtype, saveditems, cb=null, lcb=null) ->
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    @gdb.member_of_groups savedBy, (err, groups) =>
+      @getGroupsSavedInForItems searchtype, saveditems, (err2, groupssavedin) ->
+        groupssavedinvisibletouser = _.map groupssavedin, (grlist) ->
+          return _.intersection grlist, groups
+        callb err2, groupssavedinvisibletouser
+    
+
   saveItemsToGroup: (savedBy, fqGroupName, savedhashlist, searchtype) ->
     saveTime = new Date().getTime()
     savedtype="saved#{searchtype}"
     savedSearches=(savedhashlist[idx][savedtype] for idx in [0...savedhashlist.length])
-    @gdb.is_member_of_group_p savedBy, fqGroupName, (err, is_member)=>
+    @gdb.is_member_of_group_p savedBy, fqGroupName, (err, is_member) =>
       if is_member
         @getSavedBysForItems fqGroupName, searchtype, savedSearches, (err2, savedbys) =>
           @getGroupsSavedInForItems searchtype, savedSearches, (err2, groups) =>

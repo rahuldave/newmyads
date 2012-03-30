@@ -156,6 +156,27 @@ getSavedObsvsForGroup = (req, res, next) ->
 
 
 
+getSavedBysForItemsInGroup = (req, res, next) ->
+  console.log __fname = 'savedbysforitemsingroup'
+  fqGroupName = req.query.fqGroupName
+  #searchtype = req.query.searchtype
+  #searchtype dosent matter here. BUG with apps maybe it has to matter.
+  saveditems = req.query.saveditems
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (email) ->
+    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+    sgdb.getSavedBysForItems fqGroupName, saveditems
+
+getGroupsSavedInForItems = (req, res, next) ->
+  console.log __fname = 'savedbysforyemsingroup'
+  searchtype = req.query.searchtype
+  saveditems = req.query.saveditems
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (email) ->
+    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+    sgdb.getGroupsSavedInForItemsAndUser email, searchtype, saveditems
+    #lastcb will be automatically called on success, too, with the groups
+
 #BUG How about deletion from savedInGroups hash
 removeItemsFromGroup = (email, group, searchtype, searchids, lastcb) ->
   sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
