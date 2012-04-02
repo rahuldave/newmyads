@@ -112,7 +112,11 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
 _getSavedItemsFromGroup = (email, groupname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
     sgdb = savegroupdb.getSaveGroupDb(CONNECTION, callback)
-    sgdb.getSavedItemsForGroup email, groupname, searchtype,  (err, searches) ->
+    if email is 'all'
+      cfunc = sgdb.getSavedItemsForGroup
+    else
+      cfunc = sgdb.getSavedItemsForUserAndGroup
+    cfunc email, groupname, searchtype,  (err, searches) ->
       console.log searchtype, '================', searches
       if augmenthash is null
           view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
@@ -125,6 +129,8 @@ _getSavedItemsFromGroup = (email, groupname, searchtype, templateCreatorFunc, ca
               view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores, names, titles
               sgdb.lastcallback err4, view
 
+
+#BUG: Dont we also want something which gives only my stuff in group?
 
 getSavedSearchesForGroup = (req, res, next) ->
   console.log __fname = 'savedsearchesforgroup'

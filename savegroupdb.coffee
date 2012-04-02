@@ -74,7 +74,7 @@ class Savegroupdb
           return _.intersection grlist, groups
         callb err2, groupssavedinvisibletouser
     
-
+  #BUG: how are we making sure an item has really already been saved?
   saveItemsToGroup: (savedBy, fqGroupName, savedhashlist, searchtype) ->
     saveTime = new Date().getTime()
     savedtype="saved#{searchtype}"
