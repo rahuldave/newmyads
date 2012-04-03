@@ -49,29 +49,29 @@ isArray = `function (o) {
 saveSearchesToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="saveSearchestoGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
       sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
-      sgdb.saveItemsToGroup savedBy, fqGroupName, objectsToSave, 'search'
+      sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'search'
       sgdb.execute()
 
 
 savePubsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="savePubsToGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
       sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
-      sgdb.saveItemsToGroup savedBy, fqGroupName, objectsToSave, 'pub'
+      sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'pub'
       sgdb.execute()
       
 saveObsvsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   console.log __fname="saveObsvToGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
       sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
-      sgdb.saveItemsToGroup savedBy, fqGroupName, objectsToSave, 'obsv'
+      sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'obsv'
       sgdb.execute()
             
 
@@ -109,14 +109,14 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
 
   return view
   
-_getSavedItemsFromGroup = (email, groupname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
+_getSavedItemsFromGroup = (authorizedEntity, groupname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
     sgdb = savegroupdb.getSaveGroupDb(CONNECTION, callback)
-    if email is 'all'
+    if authorizedEntity is 'all'
       cfunc = sgdb.getSavedItemsForGroup
     else
       cfunc = sgdb.getSavedItemsForUserAndGroup
-    cfunc email, groupname, searchtype,  (err, searches) ->
+    cfunc authorizedEntity, groupname, searchtype,  (err, searches) ->
       console.log searchtype, '================', searches
       if augmenthash is null
           view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
@@ -136,8 +136,8 @@ getSavedSearchesForGroup = (req, res, next) ->
   console.log __fname = 'savedsearchesforgroup'
   fqGroupName = req.query.fqGroupName
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-    _getSavedItemsFromGroup email, fqGroupName, 'search', createSavedTemplates, lastcb
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsFromGroup authorizedEntity, fqGroupName, 'search', createSavedTemplates, lastcb
   
   
 
@@ -147,8 +147,8 @@ getSavedPubsForGroup = (req, res, next) ->
   console.log __fname = 'savedpubsforgroup'
   fqGroupName = req.query.fqGroupName
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-    _getSavedItemsFromGroup email, fqGroupName, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsFromGroup authorizedEntity, fqGroupName, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}
 
   
   
@@ -156,8 +156,8 @@ getSavedObsvsForGroup = (req, res, next) ->
   console.log __fname = 'savedobsvsforgroup'
   fqGroupName = req.query.fqGroupName
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-    _getSavedItemsFromGroup email, fqGroupName, 'obsv', createSavedTemplates, lastcb,
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsFromGroup authorizedEntity, fqGroupName, 'obsv', createSavedTemplates, lastcb,
                     {titlefield:'obsvtitles', namefield:'targets'}
 
 
@@ -169,24 +169,35 @@ getSavedBysForItemsInGroup = (req, res, next) ->
   #searchtype dosent matter here. BUG with apps maybe it has to matter.
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
     sgdb.getSavedBysForItems fqGroupName, saveditems
 
-getGroupsSavedInForItems = (req, res, next) ->
-  console.log __fname = 'savedbysforyemsingroup'
+getGroupsSavedInForItemsAndUser = (req, res, next) ->
+  console.log __fname = 'groupssavedinforitemsanduser'
   searchtype = req.query.searchtype
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
-    sgdb.getGroupsSavedInForItemsAndUser email, searchtype, saveditems
+    sgdb.getGroupsSavedInForItemsAndUser authorizedEntity, searchtype, saveditems
+    #lastcb will be automatically called on success, too, with the groups
+
+#Tjis one is to be called by an app if the app is given the appropriate permissions
+getGroupsSavedInForItems = (req, res, next) ->
+  console.log __fname = 'groupssavedinforitems'
+  searchtype = req.query.searchtype
+  saveditems = req.query.saveditems
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+    sgdb.getGroupsSavedInForItems authorizedEntity, searchtype, saveditems
     #lastcb will be automatically called on success, too, with the groups
 
 #BUG How about deletion from savedInGroups hash
-removeItemsFromGroup = (email, group, searchtype, searchids, lastcb) ->
+removeItemsFromGroup = (authorizedEntity, group, searchtype, searchids, lastcb) ->
   sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
-  sgdb.removeItemsFromGroup email, group, searchtype, searchids
+  sgdb.removeItemsFromGroup authorizedEntity, group, searchtype, searchids
   sgdb.execute()
                     
 
@@ -204,13 +215,13 @@ removeItemsFromGroup = (email, group, searchtype, searchids, lastcb) ->
 deleteItemsWithJSON = (funcname, searchtype, delItemsFunc) ->
   return (terms, req, res, next) ->
     console.log ">> In #{funcname}"
-    ifHavePermissions req, res, ecb, (email) ->
+    ifHavePermissions req, res, ecb, (authorizedEntity) ->
       action = terms.action
       group=terms.fqGroupName ? 'default'
       delids = if isArray terms.items then terms.items else [terms.items]
 
       if action is "delete" and delids.length > 0
-        delItemsFunc email, group, searchtype, delids, ecb
+        delItemsFunc authorizedEntity, group, searchtype, delids, ecb
       else
         ecb "not delete", null
 

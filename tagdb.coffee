@@ -44,7 +44,7 @@ class Tagdb
       return callb err, reply
 
   #BUG: how are we making sure an item has really already been saved?
-  saveItemsToTag: (savedBy, tagName, savedhashlist, searchtype) ->
+  saveItemsToTag: (authorizedEntity, tagName, savedhashlist, searchtype) ->
     saveTime = new Date().getTime()
     savedtype="saved#{searchtype}"
     taggedtype="tagged#{searchtype}"
@@ -52,23 +52,24 @@ class Tagdb
     tagsForTypeHash = "tagged:#{searchtype}"
     tagsForTypeList = "tags:#{searchtype}"
     #Above: hash or set? And do we want tags for app+group?
-    tagsForUserAndTypeHash = "tagged:#{savedBy}:#{searchtype}"
+    tagsForUserAndTypeHash = "tagged:#{authorizedEntity}:#{searchtype}"
+    taggedUserAndTypeSet = "taggeditems:#{authorizedEntity}:#{searchtype}"
     #a hash keyed by the search item or URI.
-    tagsForUserList = "tags:#{savedBy}"
-    tagsForUserAndTypeList = "tags:#{savedBy}:#{searchtype}"
+    tagsForUserList = "tags:#{authorizedEntity}"
+    tagsForUserAndTypeList = "tags:#{authorizedEntity}:#{searchtype}"
     #all the tags that the user ever did (used for tag display on saved page)
     #(similar thing must exist forgroups)
     itemsForTagAndTypeSet="#{taggedtype}:#{tagName}"
     #items in a particular tag, by type/app
-    itemsForTagAndTypeAndUserSet="#{taggedtype}:#{savedBy}:#{tagName}"
+    itemsForTagAndTypeAndUserSet="#{taggedtype}:#{authorizedEntity}:#{tagName}"
     #items like above, but per user (similar for group)
     # ASSUMPTION: already saved by user
     #shouldnt we check this?. Also cheack this in groups. BUG BUG
-    #savedByUserSet="#{savedtype}:#{savedBy}"
+    #authorizedEntityUserSet="#{savedtype}:#{authorizedEntity}"
     savedSearches=(savedhashlist[idx][savedtype] for idx in [0...savedhashlist.length])
     margs=[]
     @getTagsSavedInForItems searchtype, savedSearches, (err, tags) =>
-      @getTagsSavedinForItemsAndUser savedBy, searchtype, savedSearches, (err, tagsuser) =>
+      @getTagsSavedinForItemsAndUser authorizedEntity, searchtype, savedSearches, (err, tagsuser) =>
         for idx in [0...savedSearches.length]
           savedSearch=savedSearches[idx]
           tags[idx].push(tagName)
@@ -82,20 +83,21 @@ class Tagdb
           margs = margs.concat margsi
         margs = margs.concat (['zadd', itemsForTagAndTypeAndUserSet, saveTime, s] for s in savedSearches)
         margs = margs.concat (['zadd', itemsForTagAndTypeSet, saveTime, s] for s in savedSearches)
+        margs = margs.concat (['zadd', taggedUserAndTypeSet, saveTime, s] for s in savedSearches)
         margs = margs.concat [['lpush', tagsForUserList, tagName]]
         margs = margs.concat [['lpush', tagsForTypeList, tagName]]
         margs = margs.concat [['lpush', tagsForUserAndTypeList, tagName]]
         @addActions margs
 
-getSavedItemsForTag: (email, fqGroupName, searchtype, cb=null, lcb=null) ->
+getSavedItemsForTag: (authorizedEntity, fqGroupName, searchtype, cb=null, lcb=null) ->
   savedtype="saved#{searchtype}"
   taggedtype="tagged#{searchtype}"
   tagsForTypeHash = "tagged:#{searchtype}"
   tagsForTypeList = "tags:#{searchtype}"
-  tagsForUserAndTypeHash = "tagged:#{savedBy}:#{searchtype}"
-  tagsForUserList = "tags:#{savedBy}"
+  tagsForUserAndTypeHash = "tagged:#{authorizedEntity}:#{searchtype}"
+  tagsForUserList = "tags:#{authorizedEntity}"
   itemsForTagAndTypeSet="#{taggedtype}:#{tagName}"
-  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{savedBy}:#{tagName}"
+  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{authorizedEntity}:#{tagName}"
   nowDate = new Date().getTime()
   lcallb = if lcb then lcb else @lastcallback
   callb = if cb then cb else @lastcallback
@@ -104,15 +106,15 @@ getSavedItemsForTag: (email, fqGroupName, searchtype, cb=null, lcb=null) ->
       return lcallb err, searches
     return callb err, searches
 
-getSavedItemsForTagAndUser: (email, tagName, searchtype, cb=null, lcb=null) ->
+getSavedItemsForTagAndUser: (authorizedEntity, tagName, searchtype, cb=null, lcb=null) ->
   savedtype="saved#{searchtype}"
   taggedtype="tagged#{searchtype}"
   tagsForTypeHash = "tagged:#{searchtype}"
   tagsForTypeList = "tags:#{searchtype}"
-  tagsForUserAndTypeHash = "tagged:#{savedBy}:#{searchtype}"
-  tagsForUserList = "tags:#{savedBy}"
+  tagsForUserAndTypeHash = "tagged:#{authorizedEntity}:#{searchtype}"
+  tagsForUserList = "tags:#{authorizedEntity}"
   itemsForTagAndTypeSet="#{taggedtype}:#{tagName}"
-  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{savedBy}:#{tagName}"
+  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{authorizedEntity}:#{tagName}"
   nowDate = new Date().getTime()
   lcallb = if lcb then lcb else @lastcallback
   callb = if cb then cb else @lastcallback
@@ -131,11 +133,11 @@ getAllTagsForType: (searchtype, cb=null, lcb=null) ->
     else
       return callb err, replies
 
-getAllTagsForUser: (email, searchtype, cb=null, lcb=null) ->
+getAllTagsForUser: (authorizedEntity, searchtype, cb=null, lcb=null) ->
   if searchtype
-    tagsForUserList = "tags:#{email}:#{searchtype}"
+    tagsForUserList = "tags:#{authorizedEntity}:#{searchtype}"
   else
-   tagsForUserList = "tags:#{email}" 
+   tagsForUserList = "tags:#{authorizedEntity}" 
   lcallb = if lcb then lcb else @lastcallback
   callb = if cb then cb else @lastcallback
   @connection.lrange tagsForUserList, (err, replies) ->
@@ -149,10 +151,10 @@ getTagsSavedInForItems: (searchtype, saveditems, cb=null, lcb=null) ->
   taggedtype="tagged#{searchtype}"
   tagsForTypeHash = "tagged:#{searchtype}"
   tagsForTypeList = "tags:#{searchtype}"
-  tagsForUserAndTypeHash = "tagged:#{savedBy}:#{searchtype}"
-  tagsForUserList = "tags:#{savedBy}"
+  tagsForUserAndTypeHash = "tagged:#{authorizedEntity}:#{searchtype}"
+  tagsForUserList = "tags:#{authorizedEntity}"
   itemsForTagAndTypeSet="#{taggedtype}:#{tagName}"
-  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{savedBy}:#{tagName}"
+  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{authorizedEntity}:#{tagName}"
   lcallb = if lcb then lcb else @lastcallback
   callb = if cb then cb else @lastcallback
   margs=(['hget', tagsForTypeHash, saveditem] for saveditem in saveditems)
@@ -163,15 +165,15 @@ getTagsSavedInForItems: (searchtype, saveditems, cb=null, lcb=null) ->
       tags = (lstorempty ele  for ele in replies)
       callb err, tags
 
-getTagsSavedInForItemsAndUser: (email, searchtype, saveditems, cb=null, lcb=null) ->
+getTagsSavedInForItemsAndUser: (authorizedEntity, searchtype, saveditems, cb=null, lcb=null) ->
   savedtype="saved#{searchtype}"
   taggedtype="tagged#{searchtype}"
   tagsForTypeHash = "tagged:#{searchtype}"
   tagsForTypeList = "tags:#{searchtype}"
-  tagsForUserAndTypeHash = "tagged:#{savedBy}:#{searchtype}"
-  tagsForUserList = "tags:#{savedBy}"
+  tagsForUserAndTypeHash = "tagged:#{authorizedEntity}:#{searchtype}"
+  tagsForUserList = "tags:#{authorizedEntity}"
   itemsForTagAndTypeSet="#{taggedtype}:#{tagName}"
-  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{savedBy}:#{tagName}"
+  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{authorizedEntity}:#{tagName}"
 
   lcallb = if lcb then lcb else @lastcallback
   callb = if cb then cb else @lastcallback
@@ -183,8 +185,16 @@ getTagsSavedInForItemsAndUser: (email, searchtype, saveditems, cb=null, lcb=null
       tags= (lstorempty ele  for ele in replies)
       callb err, tags
 
+getTaggedItemsForUser: (authorizedEntity,  searchtype, cb=null, lcb=null) ->
+  nowDate = new Date().getTime()
+  lcallb = if lcb then lcb else @lastcallback
+  callb = if cb then cb else @lastcallback
+  getSortedElementsAndScores false, "taggeditems:#{authorizedEntity}:#{searchtype}", (err2, searches) =>
+    if err
+      return lcallb err, searches
+    return callb err, searches
 
-removeItemsFromTag: (email, tagName, searchtype, searchids) ->
+removeItemsFromTag: (authorizedEntity, tagName, searchtype, searchids) ->
   saveTime = new Date().getTime()
   savedtype="saved#{searchtype}"
   taggedtype="tagged#{searchtype}"
@@ -192,46 +202,55 @@ removeItemsFromTag: (email, tagName, searchtype, searchids) ->
   tagsForTypeHash = "tagged:#{searchtype}"
   tagsForTypeList = "tags:#{searchtype}"
   #Above: hash or set? And do we want tags for app+group?
-  tagsForUserAndTypeHash = "tagged:#{savedBy}:#{searchtype}"
+  tagsForUserAndTypeHash = "tagged:#{authorizedEntity}:#{searchtype}"
+  taggedUserAndTypeSet = "taggeditems:#{authorizedEntity}:#{searchtype}"
   #a hash keyed by the search item or URI.
-  tagsForUserList = "tags:#{savedBy}"
+  tagsForUserList = "tags:#{authorizedEntity}"
   #all the tags that the user ever did (used for tag display on saved page)
   #(similar thing must exist forgroups)
   itemsForTagAndTypeSet="#{taggedtype}:#{tagName}"
   #items in a particular tag, by type/app
-  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{savedBy}:#{tagName}"
-  @getSavedItemsForTagAndUser email, tagName, searchtype, (err, replies) =>
-    @getSavedItemsForTag tagName, searchtype, (err, replies2) =>
-      deletablesearches=replies.elements
-      allsearchesfortag=replies2.elements
-      #Surely this intersection can be done faster and more idiomatically
-      rids=[]
-      grids=[]
-      searchestodelete=[]
-      for jdx in [0...deletablesearches]
-        if deletablesearches[jdx] in searchids
-          rids.push(jdx)
-          searchestodelete.push(deletablesearches[jdx])
-          for kdx in [0...allsearchesfortag]
-            #should happen once per group if group addition was uniqie which it will be being a set
-            if deletablesearches[jdx] is allsearchesfortag[kdx]
-              grids.push(kdx)
-      #searchestodelete = _.intersection deletablesearches, searchids
-      @getTagsSavedInForItems searchtype, searchestodelete, (err2, tags) =>
-        margs=[]
-        for idx in [0...searchestodelete]
-          tags[idx] = _.without tags[idx], tagName
-          margsi = [
-            ['zremrangebyrank', itemsForTagAndTypeAndUserSet, rids[idx], rids[idx]],
-            ['zremrangebyrank', itemsForTagAndTypeSet,  grids[idx], grids[idx]],
-            ['hset', tagsForTypeHash, searchestodelete[idx], JSON.stringify tags[idx]],
-            ['hset', tagsForUserAndTypeHash, searchestodelete[idx], JSON.stringify tags[idx]],
-            ['lrem', tagsForUserList, -1, tagName],
-            ['lrem', tagsForTypeList, -1, tagName],
-            ['lrem', tagsForUserAndTypeList, -1, tagName]
-          ]
-          margs = margs.concat margsi
-        @addActions margs
+  itemsForTagAndTypeAndUserSet="#{taggedtype}:#{authorizedEntity}:#{tagName}"
+  @getSavedItemsForTagAndUser authorizedEntity, tagName, searchtype, (err, replies) =>
+    @getSavedItemsForTag tagName, searchtype, (err2, replies2) =>
+      @getTaggedItemsForUser authorizedEntity, searchtype, (err3, replies3) =>
+        deletablesearches=replies.elements
+        allsearchesfortag=replies2.elements
+        alltaggeditemsforuser=replies3.elements
+        #Surely this intersection can be done faster and more idiomatically
+        rids=[]
+        grids=[]
+        ugrids=[]
+        searchestodelete=[]
+        for jdx in [0...deletablesearches]
+          if deletablesearches[jdx] in searchids
+            rids.push(jdx)
+            searchestodelete.push(deletablesearches[jdx])
+            for kdx in [0...allsearchesfortag]
+              #should happen once per group if group addition was uniqie which it will be being a set
+              if deletablesearches[jdx] is allsearchesfortag[kdx]
+                grids.push(kdx)
+            for ldx in [0...alltaggeditemsforuser]
+              #should happen once per group if group addition was uniqie which it will be being a set
+              if deletablesearches[jdx] is alltaggeditemsforuser[ldx]
+                ugrids.push(ldx)
+        #searchestodelete = _.intersection deletablesearches, searchids
+        @getTagsSavedInForItems searchtype, searchestodelete, (errb, tags) =>
+          margs=[]
+          for idx in [0...searchestodelete]
+            tags[idx] = _.without tags[idx], tagName
+            margsi = [
+              ['zremrangebyrank', itemsForTagAndTypeAndUserSet, rids[idx], rids[idx]],
+              ['zremrangebyrank', itemsForTagAndTypeSet,  grids[idx], grids[idx]],
+              ['zremrangebyrank', taggedUserAndTypeSet,  ugrids[idx], ugrids[idx]],
+              ['hset', tagsForTypeHash, searchestodelete[idx], JSON.stringify tags[idx]],
+              ['hset', tagsForUserAndTypeHash, searchestodelete[idx], JSON.stringify tags[idx]],
+              ['lrem', tagsForUserList, -1, tagName],
+              ['lrem', tagsForTypeList, -1, tagName],
+              ['lrem', tagsForUserAndTypeList, -1, tagName]
+            ]
+            margs = margs.concat margsi
+          @addActions margs
 
 exports.getTagDb = (conn, lcb) ->
   return new Tagdb(conn, lcb)

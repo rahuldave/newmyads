@@ -29,20 +29,20 @@ class Savedb
         return lcallb err, reply
       return callb err, reply
 
-  saveItem: (itemobject, itemtype, savedBy) ->
+  saveItem: (itemobject, itemtype, authorizedEntity) ->
     #BUG: how do we prevent adding an item twice: zadd ought to just update timestamp
     #or we should throw an error
     savetime = new Date().getTime()
     savedtype="saved#{itemtype}"
-    savedset="saved#{itemtype}:#{savedBy}"
+    savedset="saved#{itemtype}:#{authorizedEntity}"
     saveditem = itemobject[savedtype]
     actions = (['hset', thekey, saveditem, itemobject[thekey]] for thekey of itemobject)
     actions = actions.concat [['zadd', savedset, savetime, saveditem]]
     @addActions actions
 
-  getSavedItems: (savetype, savedBy, cb=null, lcb=null) ->
+  getSavedItems: (savetype, authorizedEntity, cb=null, lcb=null) ->
     savedtype="saved#{savetype}"
-    savedset="saved#{savetype}:#{savedBy}"
+    savedset="saved#{savetype}:#{authorizedEntity}"
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
     getSortedElementsAndScores false, savedset, (err, searches) ->
@@ -60,10 +60,10 @@ class Savedb
       return callb err, archetypes
 
   #currently we do not delete metadata associated with the item
-  removeItems: (itemkeys, itemtype, savedBy) ->
+  removeItems: (itemkeys, itemtype, authorizedEntity) ->
     # In Redis 2.4 zrem and hdel can be sent multiple keys
     savedtype="saved#{itemtype}"
-    savedset="saved#{itemtype}:#{savedBy}"
+    savedset="saved#{itemtype}:#{authorizedEntity}"
     margs1 = (['zrem', savedset, theid] for theid in itemkeys)
     #margs2 = (['hdel', titlekey, docid] for docid in docids)
     #margs3 = (['hdel', bibkey, docid] for docid in docids)

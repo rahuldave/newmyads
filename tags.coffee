@@ -24,18 +24,18 @@ searchToText = utils.searchToText
 
 
 #notice that this dosent do all the saving in one transaction. this is a BUG. fix it in groups too.
-_doSaveSearchToTag = (taggedBy, tagName, savedhashlist, searchtype, callback) ->
+_doSaveSearchToTag = (authorizedEntity, tagName, savedhashlist, searchtype, callback) ->
   tdb = tagdb.getTagDb(CONNECTION, callback)
-  tdb.saveItemsToTag savedBy, tagName, savedhashlist, searchtype
+  tdb.saveItemsToTag authorizedEntity, tagName, savedhashlist, searchtype
   tdb.execute()
 
               
 saveSearchesToTag = ({tagName, objectsToSave}, req, res, next) ->
   console.log __fname="saveSearchestoTag"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
-      _doSaveSearchToTag savedBy, tagName, objectsToSave, 'search'
+      _doSaveSearchToTag authorizedEntity, tagName, objectsToSave, 'search'
 
       
 
@@ -43,16 +43,16 @@ saveSearchesToTag = ({tagName, objectsToSave}, req, res, next) ->
 savePubsToTag = ({tagName, objectsToSave}, req, res, next) ->
   console.log __fname="savePubsToTag"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
-     _doSaveSearchToTag savedBy, tagName, objectsToSave, 'pub'
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+     _doSaveSearchToTag authorizedEntity, tagName, objectsToSave, 'pub'
       
 
       
 saveObsvsToTag = ({tagName, objectsToSave}, req, res, next) ->
   console.log __fname="saveObsvsToTag"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
-      _doSaveSearchToTag savedBy, tagName, objectsToSave, 'obsv'
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+      _doSaveSearchToTag authorizedEntity, tagName, objectsToSave, 'obsv'
             
 
 
@@ -89,14 +89,14 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
 
   return view
   
-_getSavedItemsForTag = (email, tagname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
+_getSavedItemsForTag = (authorizedEntity, tagname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
     tdb = tagdb.getTagDb(CONNECTION, callback)
-    if email is 'all'
+    if authorizedEntity is 'all'
       cfunc=tdb.getSavedItemsForTag
     else
       cfunc=tdb.getSavedItemsForTagAndUser
-    cfunc email, tagname, searchtype,  (err, searches) ->
+    cfunc authorizedEntity, tagname, searchtype,  (err, searches) ->
       console.log searchtype, '================', searches
       if augmenthash is null
           view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
@@ -113,8 +113,8 @@ getSavedSearchesForTag = (req, res, next) ->
   console.log __fname = 'savedsearchesfortag'
   tagName = req.query.tagName
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-    _getSavedItemsForTag email, tagName, 'search', createSavedTemplates, lastcb
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsForTag authorizedEntity, tagName, 'search', createSavedTemplates, lastcb
   
   
 
@@ -124,8 +124,8 @@ getSavedPubsForTag = (req, res, next) ->
   console.log __fname = 'savedpubsfortag'
   tagName = req.query.tagName
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-    _getSavedItemsForTag email, tagName, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsForTag authorizedEntity, tagName, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}
 
   
 #BUG: getting permissions right for next 2 may be iffy due to different consumers of API  
@@ -133,8 +133,8 @@ getSavedObsvsForTag = (req, res, next) ->
   console.log __fname = 'savedobsvsfortag'
   tagName = req.query.tagName
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-    _getSavedItemsForTag email, tagName, 'obsv', createSavedTemplates, lastcb,
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsForTag authorizedEntity, tagName, 'obsv', createSavedTemplates, lastcb,
                     {titlefield:'obsvtitles', namefield:'targets'}
 #GET
 
@@ -142,16 +142,16 @@ getAllTagsForUser = (req, res, next) ->
   console.log __fname = 'gettagsforuser'
   lastcb = httpcallbackmaker(__fname, req, res, next)
   searchtype=req.query.searchtype ? null
-  ifHavePermissions req, res, lastcb, (email) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     tdb = tagdb.getTagDb(CONNECTION, callback)
-      tdb.getAllTagsForUser email, searchtype
+      tdb.getAllTagsForUser authorizedEntity, searchtype
 
 #also the thing that gets tags for an app        
 getAllTagsForType= (req, res, next) ->
   console.log __fname = 'gettagsfortype'
   lastcb = httpcallbackmaker(__fname, req, res, next)
   searchtype=req.query.searchtype
-  ifHavePermissions req, res, lastcb, (email) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     tdb = tagdb.getTagDb(CONNECTION, callback)
     tdb.getAllTagsForType searchtype
 
@@ -160,78 +160,17 @@ getAllTagsForType= (req, res, next) ->
 #BUG: we also need to support tag unions and? intersections.
 
 #BUG the bug where i can delete things of yours in a group (here in a tag) remains.
-_doRemoveSearchesFromTag = (email, tagName, searchtype, searchids, callback) ->
-    taggedtype="tagged#{searchtype}"
-    allTagsHash = "tagged:#{taggedBy}:#{searchtype}"
-    taggedAllSet="#{taggedtype}:#{tagName}"
-    taggedUserSet="#{taggedtype}:#{taggedBy}:#{tagName}"
 
-    margs=(['sismember', taggedUserSet, sid] for sid in searchids)
-
-    # What about the nested multis..how does this affect atomicity?
-    hashkeystodelete=[]
-
-    redis_client.multi(margs).exec (err, replies) ->
-        if err
-            return callback err, replies
-        #ranks=(rank for rank in replies when rank isnt 0)
-        sididxs=(sididx for sididx in [0...replies.length] when replies[sididx] isnt 0)
-        console.log "sididxs", sididxs
-        mysidstodelete=(searchids[idx] for idx in sididxs)
-        #Should error out here if null so that we can use that in UI to say you are not owner, or should we?
-        margs2=(['hget', allTagsHash, searchids[idx]] for idx in sididxs)
-        redis_client.multi(margs2).exec (errj, tagjsonlist) ->
-            if errj
-                return callback errj, tagjsonlist
-            console.log "o>>>>>>>", searchids, tagjsonlist
-            savedintags = (JSON.parse ele for ele in tagjsonlist)
-            console.log "savedintags", savedintags
-            newsavedtags=[]
-            for taglist in savedintags
-                console.log 'taglist', taglist
-                newtaglist=[]
-                newtaglist.push(ele) for ele in taglist when ele isnt tagName
-                console.log 'newtaglist', newtaglist
-                newsavedtags.push(newtaglist)
-            
-            newtagjsonlist = (JSON.stringify tlist for tlist in newsavedtags)
-            #BUG if empty json array should we delete key in hash? (above and below this line)
-            savedintagshashcmds=(['hset', allTagsHash, searchids[i], newtagjsonlist[i]] for i in sididxs)
-            #Get those added by user to group from the given sids. I have substituted null for nil
-            console.log "savedintagshashcmds", savedintagshashcmds
-            
-            
-            margsuser = (['srem', taggedAllSet, sid] for sid in mysidstodelete)
-            margsall = (['srem', taggedUserSet, sid] for sid in mysidstodelete)
-            margsi=margsuser.concat margsall
-            margs4=margsi.concat savedingroupshashcmds
-            #Doing all the multis here together preserves atomicity since these are destructive
-            #they should all be done or not at all
-            console.log 'margs4',margs4
-            redis_client.multi(margs4).exec callback
                     
-removeSearchesFromTag = (email, tagName, searchids, callback) ->
-    _doRemoveSearchesFromTag(email, tagName, 'search', searchids, callback)
-    #if savedBy is you, you must be a menber of the group so dont test membership of group
-    #shortcircuit by getting those searchids which the user herself has saved
-    
-
-removePubsFromTag = (email, tagName, docids, callback) ->
-    _doRemoveSearchesFromTag(email, tagName, 'pub', docids, callback)
-
-      
-removeObsvsFromTag = (email, tagName, obsids, callback) ->
-   _doRemoveSearchesFromTag(email, tagName, 'obsv', obsids, callback)
-
 
 getTagsSavedInForItemsAndUser = (req, res, next) ->
   console.log __fname = 'tagssavedinforitemsanduser'
   searchtype = req.query.searchtype
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     tdb = tagdb.getTagDb(CONNECTION, lastcb)
-    tdb.getTagsSavedInForItemsAndUser email, searchtype, saveditems
+    tdb.getTagsSavedInForItemsAndUser authorizedEntity, searchtype, saveditems
 
 #we can also do this on a per app/type basis
 getTagsSavedInForItems = (req, res, next) ->
@@ -239,7 +178,7 @@ getTagsSavedInForItems = (req, res, next) ->
   searchtype = req.query.searchtype
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     tdb = tagdb.getTagDb(CONNECTION, lastcb)
     tdb.getTagsSavedInForItems searchtype, saveditems
 
@@ -249,9 +188,9 @@ isArray = `function (o) {
 };`
 
 #BUG How about deletion from savedInGroups hash
-removeItemsFromTag = (email, tag, searchtype, searchids, lastcb) ->
+removeItemsFromTag = (authorizedEntity, tag, searchtype, searchids, lastcb) ->
   tdb = tagdb.getTagDb(CONNECTION, lastcb)
-  tdb.removeItemsFromTag email, tag, searchtype, searchids
+  tdb.removeItemsFromTag authorizedEntity, tag, searchtype, searchids
   tdb.execute()
                     
 
@@ -269,13 +208,13 @@ removeItemsFromTag = (email, tag, searchtype, searchids, lastcb) ->
 deleteItemsWithJSON = (funcname, searchtype, delItemsFunc) ->
   return (terms, req, res, next) ->
     console.log ">> In #{funcname}"
-    ifHavePermissions req, res, ecb, (email) ->
+    ifHavePermissions req, res, ecb, (authorizedEntity) ->
       action = terms.action
       tag=terms.tagName ? 'default'
       delids = if isArray terms.items then terms.items else [terms.items]
 
       if action is "delete" and delids.length > 0
-        delItemsFunc email, tag, searchtype, delids, ecb
+        delItemsFunc authorizedEntity, tag, searchtype, delids, ecb
       else
         ecb "not delete", null
 
@@ -300,5 +239,8 @@ exports.getSavedPubsForTag = getSavedPubsForTag
 
 exports.getSavedObsvsForTag = getSavedObsvsForTag
 
-exports.getTagsForUser = getTagsForUser
+exports.getAllTagsForUser = getAllTagsForUser
+exports.getAllTagsForType = getAllTagsForType
+exports.getTagsSavedInForItems = getTagsSavedInForItems
+exports.getTagsSavedInForItemsAndUser = getTagsSavedInForItemsAndUser
 #exports.getTagsForGroup = getTagsForGroup

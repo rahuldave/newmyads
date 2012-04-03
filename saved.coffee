@@ -18,7 +18,7 @@ httpcallbackmaker = requests.httpcallbackmaker
 
 utils = require("./utils")
 CONNECTION = utils.getRedisClient()
-ifHaveEmail = utils.ifHaveEmail
+ifHaveauthorizedEntity = utils.ifHaveauthorizedEntity
 ifHaveAuth = utils.ifHaveAuth
 ifHavePermissions = utils.ifHavePermissions
 getSortedElements = utils.getSortedElements
@@ -36,13 +36,13 @@ searchToText = utils.searchToText
 
 
 
-_doSaveSearch = (savedBy, objects, searchtype, callback) ->
+_doSaveSearch = (authorizedEntity, objects, searchtype, callback) ->
   saveTime = new Date().getTime()
   sdb=savedb.getSaveDb(CONNECTION, lastcb)
   margs=[]
   for idx in [0...objects.length]
     theobject=objects[idx]
-    sdb.saveItem(theobject, searchtype, savedBy) 
+    sdb.saveItem(theobject, searchtype, authorizedEntity) 
   sdb.execute()   
   
 
@@ -50,11 +50,11 @@ saveSearches = (payload, req, res, next) ->
   console.log __fname="saveSearches"
   console.log "In #{__fname}: cookies=#{req.cookies} payload=#{payload}"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
-      _doSaveSearch savedBy, objectsToSave, 'search', lastcb
+      _doSaveSearch authorizedEntity, objectsToSave, 'search', lastcb
 
 
 savePubs = (payload, req, res, next) ->
@@ -62,21 +62,21 @@ savePubs = (payload, req, res, next) ->
   console.log __fname="savePubs"
   console.log "In #{__fname}: cookies=#{req.cookies} payload=#{payload}"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
       o2s = ({savedbibcodes:pubbibcode, savedtitles:pubtitle, savedpub:savedpub} for {savedpub, pubbibcode, pubtitle} in objectsToSave)
-      _doSaveSearch savedBy, o2s, 'pub', lastcb
+      _doSaveSearch authorizedEntity, o2s, 'pub', lastcb
       
 saveObsvs = (payload, req, res, next) ->
   console.log __fname="saveObsvs"
   console.log "In #{__fname}: cookies=#{req.cookies} payload=#{payload}"
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (savedBy) ->
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       dajson = JSON.parse payload
       objectsToSave = if isArray dajson then dajson else [dajson]
       o2s = ({savedtargets:obsvtarget, savedobsvtitles:obsvtitle, savedobsv:savedobsv} for {savedobsv, obsvtarget, obsvtitle} in objectsToSave)
-      _doSaveSearch savedBy, o2s, 'obsv', lastcb
+      _doSaveSearch authorizedEntity, o2s, 'obsv', lastcb
 
   
 #each searchObject is {savedsearch|savedpub|savedobsv}
@@ -118,10 +118,10 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
 
   return view
 
-_getSavedItems = (email, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
+_getSavedItems = (authorizedEntity, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
     sdb=savedb.getSaveDb(CONNECTION, callback)
-    sdb.getSavedItems searchtype, email,  (err, searches) ->
+    sdb.getSavedItems searchtype, authorizedEntity,  (err, searches) ->
       console.log searchtype, '================', searches
       if augmenthash is null
           view = templateCreatorFunc searchtype, nowDate, searches.elements, searches.scores
@@ -138,20 +138,20 @@ _getSavedItems = (email, searchtype, templateCreatorFunc, callback, augmenthash=
 getSavedPubs = (req, res, next) ->
   console.log __fname = 'savedpubs'
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-      _getSavedItems email, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}  
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+      _getSavedItems authorizedEntity, 'pub', createSavedTemplates, lastcb, {titlefield:'titles', namefield:'bibcodes'}  
       
 getSavedSearches = (req, res, next) ->
   console.log __fname = 'savedsearches'
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-      _getSavedItems email, 'search', createSavedTemplates, lastcb
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+      _getSavedItems authorizedEntity, 'search', createSavedTemplates, lastcb
       
 getSavedObsvs = (req, res, next) ->
   console.log __fname = 'savedobsvs'
   lastcb = httpcallbackmaker(__fname, req, res, next)
-  ifHavePermissions req, res, lastcb, (email) ->
-      _getSavedItems email, 'obsv', createSavedTemplates, lastcb, {titlefield:'obsvtitles', namefield:'targets'}          
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+      _getSavedItems authorizedEntity, 'obsv', createSavedTemplates, lastcb, {titlefield:'obsvtitles', namefield:'targets'}          
    
 
 
@@ -165,11 +165,11 @@ getSavedObsvs = (req, res, next) ->
 
       
 
-removeItems = (email, itemtype, itemids, lastcb) ->
+removeItems = (authorizedEntity, itemtype, itemids, lastcb) ->
   if itemids.length is 0
     return lastcb "No #{itemtype}s to delete", null
   sdb=savedb.getSaveDb(CONNECTION, lastcb)
-  sdb.removeItems(itemids, itemtype, email) 
+  sdb.removeItems(itemids, itemtype, authorizedEntity) 
   sdb.execute()
 
 deleteItem = (funcname, searchtype, delItemsFunc) ->
@@ -177,12 +177,12 @@ deleteItem = (funcname, searchtype, delItemsFunc) ->
   return (payload, req, res, next) ->
     console.log ">> In #{funcname}"
     ecb = httpcallbackmaker(funcname, req, res, next)
-    ifHavePermissions req, res, ecb, (email) ->
+    ifHavePermissions req, res, ecb, (authorizedEntity) ->
       terms = JSON.parse payload
       console.log ">> JSON payload=#{payload}"
       delid = terms[idname]
       if delid?
-        delItemsFunc email, searchtype, [delid], ecb
+        delItemsFunc authorizedEntity, searchtype, [delid], ecb
       else
         ecb "not delete", null
 
@@ -197,14 +197,14 @@ deleteItems = (funcname, searchtype, delItemsFunc) ->
   return (payload, req, res, next) ->
     console.log ">> In #{funcname}"
     ecb = httpcallbackmaker(funcname, req, res, next)
-    ifHavePermissions req, res, ecb, (email) ->
+    ifHavePermissions req, res, ecb, (authorizedEntity) ->
       terms = JSON.parse payload
       console.log ">> JSON payload=#{payload}"
       action = terms.action
       delids = if isArray terms[idname] then terms[idname] else [terms[idname]]
 
       if action is "delete" and delids.length > 0
-        delItemsFunc email, searchtype, delids, ecb
+        delItemsFunc authorizedEntity, searchtype, delids, ecb
       else
         ecb "not delete", null
 

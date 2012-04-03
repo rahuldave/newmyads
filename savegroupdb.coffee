@@ -65,35 +65,36 @@ class Savegroupdb
         groups = (lstorempty ele  for ele in replies)
         callb err, groups
 
-  getGroupsSavedInForItemsAndUser: (email, searchtype, saveditems, cb=null, lcb=null) ->
+  getGroupsSavedInForItemsAndUser: (authorizedEntity, searchtype, saveditems, cb=null, lcb=null) ->
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    @gdb.member_of_groups savedBy, (err, groups) =>
+    @gdb.member_of_groups authorizedEntity, (err, groups) =>
       @getGroupsSavedInForItems searchtype, saveditems, (err2, groupssavedin) ->
         groupssavedinvisibletouser = _.map groupssavedin, (grlist) ->
           return _.intersection grlist, groups
         callb err2, groupssavedinvisibletouser
     
   #BUG: how are we making sure an item has really already been saved?
-  saveItemsToGroup: (savedBy, fqGroupName, savedhashlist, searchtype) ->
+  saveItemsToGroup: (authorizedEntity, fqGroupName, savedhashlist, searchtype) ->
     saveTime = new Date().getTime()
     savedtype="saved#{searchtype}"
     savedSearches=(savedhashlist[idx][savedtype] for idx in [0...savedhashlist.length])
-    @gdb.is_member_of_group_p savedBy, fqGroupName, (err, is_member) =>
+    @gdb.is_member_of_group_p authorizedEntity, fqGroupName, (err, is_member) =>
       if is_member
         @getSavedBysForItems fqGroupName, searchtype, savedSearches, (err2, savedbys) =>
           @getGroupsSavedInForItems searchtype, savedSearches, (err2, groups) =>
             margs=[]
             for idx in [0...savedSearches.length]
               savedSearch=savedSearches[idx]
-              savedbys[idx].push(savedBy)
+              savedbys[idx].push(authorizedEntity)
               groups[idx].push(fqGroupName)
               savedbys[idx] = _.uniq savedbys[idx]
               groupss[idx] = _.uniq groupss[idx]
               margsi = [
-                ['zadd', "saved#{searchtype}:#{savedBy}:#{fqGroupName}", saveTime, savedSearch],
+                ['zadd', "saved#{searchtype}:#{authorizedEntity}:#{fqGroupName}", saveTime, savedSearch],
                 ['zadd', "saved#{searchtype}:#{fqGroupName}", saveTime, savedSearch],
-                ['hset', "savedby:#{fqGroupName}", savedSearch, JSON.stringify savedBys[idx]],
+                ['zadd', "grouped#{searchtype}:#{authorizedEntity}", saveTime, savedSearch],
+                ['hset', "savedby:#{fqGroupName}", savedSearch, JSON.stringify savedbys[idx]],
                 ['hset', "savedInGroups:#{searchtype}", savedSearch, JSON.stringify groups[idx]],
               ]
               margs = margs.concat margsi
@@ -102,64 +103,81 @@ class Savegroupdb
 
   #upstream this used to union with groups you were a member of to prevent leakage
   #BUG/TODO: this must now be done somewhere else. Also dosent return tags. That
-  getSavedItemsForGroup: (email, fqGroupName, searchtype, cb=null, lcb=null) ->
+  getSavedItemsForGroup: (authorizedEntity, fqGroupName, searchtype, cb=null, lcb=null) ->
     nowDate = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    @gdb.is_member_of_group_p savedBy, fqGroupName, (err, is_member)=>
+    @gdb.is_member_of_group_p authorizedEntity, fqGroupName, (err, is_member)=>
       if is_member
         getSortedElementsAndScores false, "saved#{searchtype}:#{fqGroupName}", (err2, searches) =>
           if err
             return lcallb err, searches
           return callb err, searches
 
-  getSavedItemsForUserAndGroup: (email, fqGroupName, searchtype, cb=null, lcb=null) ->
+  getSavedItemsForUserAndGroup: (authorizedEntity, fqGroupName, searchtype, cb=null, lcb=null) ->
     nowDate = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
     callb = if cb then cb else @lastcallback
-    @gdb.is_member_of_group_p savedBy, fqGroupName, (err, is_member)=>
+    @gdb.is_member_of_group_p authorizedEntity, fqGroupName, (err, is_member)=>
       if is_member
-        getSortedElementsAndScores false, "saved#{searchtype}:#{email}:#{fqGroupName}", (err2, searches) =>
+        getSortedElementsAndScores false, "saved#{searchtype}:#{authorizedEntity}:#{fqGroupName}", (err2, searches) =>
           if err
             return lcallb err, searches
           return callb err, searches
 
+  getGroupedItemsForUser: (authorizedEntity,  searchtype, cb=null, lcb=null) ->
+    nowDate = new Date().getTime()
+    lcallb = if lcb then lcb else @lastcallback
+    callb = if cb then cb else @lastcallback
+    getSortedElementsAndScores false, "grouped#{searchtype}:#{authorizedEntity}", (err2, searches) =>
+      if err
+        return lcallb err, searches
+      return callb err, searches
 
-  removeItemsFromGroup = (email, group, searchtype, searchids) ->
+
+  removeItemsFromGroup = (authorizedEntity, group, searchtype, searchids) ->
     #Tags are not handled BUG
-    keyemail = "saved#{searchtype}:#{email}"
+    keyauthorizedEntity = "saved#{searchtype}:#{authorizedEntity}"
+    grpauthorizedEntity = "grouped#{searchtype}:#{authorizedEntity}"
     keygroup = "saved#{searchtype}:#{group}"
-    keyemailgroup = "saved#{searchtype}:#{email}:#{group}"
+    keyauthorizedEntitygroup = "saved#{searchtype}:#{authorizedEntity}:#{group}"
     keys4savedbyhash = "savedby:#{group}"
     savedingroupshash = "savedInGroups:#{searchtype}"
     #I can only emove stuff I have saved
-    @getSavedItemsForUserAndGroup email, group, searchtype, (err, replies) =>
-      @getSavedItemsForGroup email, group, searchtype, (err, replies2) =>
-        deletablesearches=replies.elements
-        allgroupsearches=replies2.elements
-        #Surely this intersection can be done faster and more idiomatically
-        rids=[]
-        grids=[]
-        searchestodelete=[]
-        for jdx in [0...deletablesearches]
-          if deletablesearches[jdx] in searchids
-            rids.push(jdx)
-            searchestodelete.push(deletablesearches[jdx])
-            for kdx in [0...allgroupsearches]
-              #should happen once per group if group addition was uniqie which it will be being a set
-              if deletablesearches[jdx] is allgroupsearches[kdx]
-                grids.push(kdx)
+    @getSavedItemsForUserAndGroup authorizedEntity, group, searchtype, (err, replies) =>
+      @getSavedItemsForGroup authorizedEntity, group, searchtype, (err2, replies2) =>
+        @getGroupedItemsForUser authorizedEntity, searchtype, (err2, replies3) =>
+          deletablesearches=replies.elements
+          allgroupsearches=replies2.elements
+          allsavedbyuseringroups=replies3.elements
+          #Surely this intersection can be done faster and more idiomatically
+          rids=[]
+          grids=[]
+          ugrids=[]
+          searchestodelete=[]
+          for jdx in [0...deletablesearches]
+            if deletablesearches[jdx] in searchids
+              rids.push(jdx)
+              searchestodelete.push(deletablesearches[jdx])
+              for kdx in [0...allgroupsearches]
+                #should happen once per group if group addition was uniqie which it will be being a set
+                if deletablesearches[jdx] is allgroupsearches[kdx]
+                  grids.push(kdx)
+              for ldx in [0...allsavedbyuseringroups]
+                if deletablesearches[jdx] is allsavedbyuseringroups[ldx]
+                  ugrids.push(ldx)
         #searchestodelete = _.intersection deletablesearches, searchids
-        @getSavedBysForItems fqGroupName, searchtype, searchesodelete, (err2, savedbys) =>
-          @getGroupsSavedInForItems searchtype, searchestodelete, (err2, groups) =>
+        @getSavedBysForItems fqGroupName, searchtype, searchesodelete, (errb, savedbys) =>
+          @getGroupsSavedInForItems searchtype, searchestodelete, (errc, groups) =>
             margs=[]
             for idx in [0...searchestodelete]
               groups[idx] = _.without groups[idx], group
-              savedbys[idx] = _.without savedbys[idx], email
+              savedbys[idx] = _.without savedbys[idx], authorizedEntity
               margsi = [
-                ['zremrangebyrank', keyemailgroup, rids[idx], rids[idx]],
+                ['zremrangebyrank', keyauthorizedEntitygroup, rids[idx], rids[idx]],
                 ['zremrangebyrank', keygroup,  grids[idx], grids[idx]],
-                ['hset', keys4savedbyhash, searchestodelete[idx], JSON.stringify savedBys[idx]],
+                ['zremrangebyrank', grpauthorizedEntity,  ugrids[idx], ugrids[idx]],
+                ['hset', keys4savedbyhash, searchestodelete[idx], JSON.stringify savedbys[idx]],
                 ['hset', savedingroupshash, searchestodelete[idx], JSON.stringify groups[idx]],
               ]
               margs = margs.concat margsi
