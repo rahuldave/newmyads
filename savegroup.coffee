@@ -74,7 +74,18 @@ saveObsvsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
       sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'obsv'
       sgdb.execute()
             
-
+saveItemsPublic = ({searchtype, objectsToSave}, req, res, next) ->
+  console.log __fname="saveitemspublic"
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  fqGroupName = 'public'
+  #BUG: ifhavepermissions will need to have a dictionary additional argument used to establish permissins
+  #against a set of capabilities. The fact that this is public will be in ther rather than replied on from
+  #query.
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+      # keep as a multi even though now a single addition
+      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, searchtype
+      sgdb.execute()
 
 createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchetypes=null, titlearchetypes=null) ->
   view = {}
@@ -131,6 +142,14 @@ _getSavedItemsFromGroup = (authorizedEntity, groupname, searchtype, templateCrea
 
 
 #BUG: Dont we also want something which gives only my stuff in group?
+
+getPublicItems = (req, res, next) ->
+  console.log __fname = 'publicitems'
+  fqGroupName = 'public'
+  searchtype = req.query.searchtype
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  ifHavePermissions req, res, lastcb, (authorizedEntity) ->
+    _getSavedItemsFromGroup authorizedEntity, fqGroupName, searchtype, createSavedTemplates, lastcb
 
 getSavedSearchesForGroup = (req, res, next) ->
   console.log __fname = 'savedsearchesforgroup'
@@ -217,7 +236,7 @@ deleteItemsWithJSON = (funcname, searchtype, delItemsFunc) ->
     console.log ">> In #{funcname}"
     ifHavePermissions req, res, ecb, (authorizedEntity) ->
       action = terms.action
-      group=terms.fqGroupName ? 'default'
+      group=terms.fqGroupName ? 'public'
       delids = if isArray terms.items then terms.items else [terms.items]
 
       if action is "delete" and delids.length > 0
@@ -226,11 +245,16 @@ deleteItemsWithJSON = (funcname, searchtype, delItemsFunc) ->
         ecb "not delete", null
 
 
+deleteItemsPublic = (terms, req, res, next, searchtype) ->
+  curriedfunc = deleteItemsWithJSON "deleteitemspublic", searchtype, removeItemsFromGroup
+  curriedfunc terms, req, res, next
 
 exports.deleteSearchesFromGroup = deleteItemsWithJSON "deleteSearchesFromGroup", "search", removeItemsFromGroup
 exports.deletePubsFromGroup     = deleteItemsWithJSON "deletePubsFromGroup",     "pub",    removeItemsFromGroup
 exports.deleteObsvsFromGroup     = deleteItemsWithJSON "deleteObsvsFromGroup",     "obsv",    removeItemsFromGroup
 
+exports.deleteItemsPublic = deleteItemsPublic
+exports.saveItemsPublic = saveItemsPublic
 
 exports.saveSearchesToGroup = saveSearchesToGroup
 exports.savePubsToGroup = savePubsToGroup
@@ -240,3 +264,7 @@ exports.getSavedSearchesForGroup = getSavedSearchesForGroup
 exports.getSavedPubsForGroup = getSavedPubsForGroup
 exports.getSavedObsvsForGroup = getSavedObsvsForGroup
 
+exports.getGroupsSavedInForItems = getGroupsSavedInForItems
+exports.getGroupsSavedInForItemsAndUser = getGroupsSavedInForItemsAndUser
+exports.getSavedBysForItemsInGroup = getSavedBysForItemsInGroup
+exports.getPublicItems = getPublicItems

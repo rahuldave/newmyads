@@ -1,0 +1,1 @@
+#Every user must also be added to public group. Called using pubsub.
