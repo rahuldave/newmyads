@@ -2,10 +2,29 @@
 Handle user login/out and checks.
 ###
 
+#connectutils = require('connect').utils
+url = require 'url'
+#redis_client = require("redis").createClient()
+requests = require("./requests-myads")
+failedRequest = requests.failedRequest
+successfulRequest = requests.successfulRequest
+ifLoggedIn = requests.ifLoggedIn
+
+httpcallbackmaker = requests.httpcallbackmaker
+#consolecallbackmaker=requests.consolecallbackmaker
 connectutils = require('connect').utils
 url = require 'url'
-redis_client = require("redis").createClient()
 
+userdb = require("./userdb")
+utils = require("./utils")
+CONNECTION = utils.getRedisClient()
+ifHavePermissions = utils.ifHavePermissions
+ifHaveAuth = utils.ifHaveAuth
+ifHavePermissions = utils.ifHavePermissions
+getSortedElements = utils.getSortedElements
+getSortedElementsAndScores = utils.getSortedElementsAndScores
+timeToText = utils.timeToText
+searchToText = utils.searchToText
 
 makeLoginCookie = (cookiename,  cookievalue, days) ->
   secs = days * 24 * 60 * 60
@@ -48,91 +67,43 @@ logoutUser = (req, res, next) ->
     res.end()
 
 insertUser = (jsonpayload, req, res, next) ->
+  #BUG: currently checks on the payload have been removed. This is true everywhere.
+  console.log __fname='insertuser'
   currentToken = connectutils.uid 16
   loginCookie = makeLoginCookie 'logincookie', currentToken, 365
   cookie = loginCookie.cookie
-
-  # Seeing some errors here in CoffeeScript conversion that take
-  # down the server, so add some defensive code.
-  #
-  console.log "insertUser payload=#{jsonpayload}"
-  if "#{jsonpayload}" is "undefined" or not jsonpayload? or jsonpayload is ""
-    console.log "@@ payload is undefined or empty!"
-    res.writeHead 200, "OK",
-      'Content-Type': 'application/json'
-      'Set-Cookie': cookie
-    res.end()
-    return
-
-  jsonObj = JSON.parse jsonpayload
-  if not jsonObj.email?
-    console.log "@@ payload has no email field!"
-    res.writeHead 200, "OK",
-      'Content-Type': 'application/json'
-      'Set-Cookie': cookie
-    res.end()
-    return
-
-  email = jsonObj.email
-
-  mkeys = [['hset', email, 'dajson', jsonpayload]
-           ['hset', email, 'cookieval', cookie]
-          ]
-  margs = (['hset', email, key, value] for key, value of jsonObj)
-  redis_client.multi(margs.concat(mkeys)).exec()
-
-  # Store the user details (the unique value and email) in sets to make it
-  # easier to identify them later. This may not be needed. Also, should the
-  # unique value have a time-to-live associated with it (and can this be done
-  # within a set)?
-  #
-  # Since thenext set will be the last one the others will have completed.Not that it matters as we dont error handle right now.
-  # redis_client.setex('auth:' + logincookie['unique'], logincookie['expdateinsecs'], logincookie['cookie']);
-  # on the fly we will have savedsearches:email and savedpubs:email
-  #
-  #  redis_client.setex('email:' + logincookie['unique'], logincookie['expdateinsecs'], email, responsedo);
-  #
+  lastcb = httpcallbackmaker(__fname, req, res, next)
+  udb=userdb.getDb(CONNECTION, lastcb)
+  udb.insertUser(jsonpayload, loginCookie)
   efunc = (err, reply) ->
     res.writeHead 200, "OK",
       'Content-Type': 'application/json'
       'Set-Cookie': cookie
     res.end()
+  #execute with this as callback. Would it not be better to enhance the regular calback with cookie additon?
+  #yes it would. Should the errors also get the cookie as in the original user.coffee?
+  udb.execute(efunc)
 
-  redis_client.multi([['sadd', 'useremails', email],
-                      ['sadd', 'userids', loginCookie.unique],
-			                ['setex', "email:#{loginCookie.unique}", loginCookie.expdateinsecs, email]
-		       ]).exec(efunc)
-
+#The original getUser tried to stuff with startupcookie. We remove this now but will get back
+#in another way to bootstrap from ads cookie stealer BUG
+#This two should use httpcallbackmaker in some way, augmented, instead of efunc
 getUser = (req, res, next) ->
+  console.log __fname="getuser"
   loginCookie = req.cookies.logincookie
   startupCookie = req.cookies.startupcookie
+  lastcb = httpcallbackmaker(__fname, req, res, next)
   sendback =
     startup: if startupCookie? then startupCookie else 'undefined'
     email: 'undefined'
 
-  if not loginCookie?
-    headerDict = 'Content-Type': 'application/json'
-    if startupCookie?
-      headerDict['Set-Cookie'] = makeLoginCookie('startupcookie', startupCookie, -1).cookie
-
-    res.writeHead 200, 'OK', headerDict
-    stashMail = JSON.stringify sendback
-    console.log "getUser: no loginCookie, returning #{stashMail}"
-    res.end stashMail
-    return
-
-  res.writeHead 200, 'OK', 'Content-Type': 'application/json'
-  console.log "getUser: loginCookie=#{loginCookie}"
-  redis_client.get "email:#{loginCookie}", (err, reply) ->
-    if (err)
-      # no user
-      console.log "@@ getUser get email:#{loginCookie} failed with #{err}"
-      next err
-    else
-      sendback.email = String reply
-      stashMail = JSON.stringify sendback
-      console.log "getUser: reply #{stashMail}"
-      res.end stashMail
+  udb=userdb.getDb(CONNECTION, lastcb)
+  efunc = (err, reply) ->
+    res.writeHead 200, "OK",
+      'Content-Type': 'application/json'
+      'Set-Cookie': cookie
+    sendback.email=reply
+    res.end JSON.stringify(sendback)
+  udb.getUser(loginCookie, efunc)
 
 
             

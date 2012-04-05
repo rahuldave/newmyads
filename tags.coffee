@@ -25,7 +25,7 @@ searchToText = utils.searchToText
 
 #notice that this dosent do all the saving in one transaction. this is a BUG. fix it in groups too.
 _doSaveSearchToTag = (authorizedEntity, tagName, savedhashlist, searchtype, callback) ->
-  tdb = tagdb.getTagDb(CONNECTION, callback)
+  tdb = tagdb.getDb(CONNECTION, callback)
   tdb.saveItemsToTag authorizedEntity, tagName, savedhashlist, searchtype
   tdb.execute()
 
@@ -91,7 +91,7 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
   
 _getSavedItemsForTag = (authorizedEntity, tagname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
-    tdb = tagdb.getTagDb(CONNECTION, callback)
+    tdb = tagdb.getDb(CONNECTION, callback)
     if authorizedEntity is 'all'
       cfunc=tdb.getSavedItemsForTag
     else
@@ -143,7 +143,7 @@ getAllTagsForUser = (req, res, next) ->
   lastcb = httpcallbackmaker(__fname, req, res, next)
   searchtype=req.query.searchtype ? null
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    tdb = tagdb.getTagDb(CONNECTION, callback)
+    tdb = tagdb.getDb(CONNECTION, callback)
       tdb.getAllTagsForUser authorizedEntity, searchtype
 
 #also the thing that gets tags for an app        
@@ -152,7 +152,7 @@ getAllTagsForType= (req, res, next) ->
   lastcb = httpcallbackmaker(__fname, req, res, next)
   searchtype=req.query.searchtype
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    tdb = tagdb.getTagDb(CONNECTION, callback)
+    tdb = tagdb.getDb(CONNECTION, callback)
     tdb.getAllTagsForType searchtype
 
 
@@ -169,7 +169,7 @@ getTagsSavedInForItemsAndUser = (req, res, next) ->
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    tdb = tagdb.getTagDb(CONNECTION, lastcb)
+    tdb = tagdb.getDb(CONNECTION, lastcb)
     tdb.getTagsSavedInForItemsAndUser authorizedEntity, searchtype, saveditems
 
 #we can also do this on a per app/type basis
@@ -179,7 +179,7 @@ getTagsSavedInForItems = (req, res, next) ->
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    tdb = tagdb.getTagDb(CONNECTION, lastcb)
+    tdb = tagdb.getDb(CONNECTION, lastcb)
     tdb.getTagsSavedInForItems searchtype, saveditems
 
 isArray = `function (o) {
@@ -189,7 +189,7 @@ isArray = `function (o) {
 
 #BUG How about deletion from savedInGroups hash
 removeItemsFromTag = (authorizedEntity, tag, searchtype, searchids, lastcb) ->
-  tdb = tagdb.getTagDb(CONNECTION, lastcb)
+  tdb = tagdb.getDb(CONNECTION, lastcb)
   tdb.removeItemsFromTag authorizedEntity, tag, searchtype, searchids
   tdb.execute()
                     

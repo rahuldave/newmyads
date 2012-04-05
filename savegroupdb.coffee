@@ -16,12 +16,16 @@ lstorempty = (x) ->
     return [x]
 
 class Savegroupdb
-  constructor: (client, lastcallback) ->
+  constructor: (client, lastcallback, itransaction=null) ->
     @connection = client
     @lastcallback = lastcallback
-    @transaction=[]
-    @gdb = groupdb.getGroupDb client, lastcallback
-    @sdb = savedb.getSaveDb client, lastcallback
+    if itransaction is null
+      @transaction=[]
+    else
+      @transaction=itransaction
+    #botton two only used as gets, so no need to share transactions
+    @gdb = groupdb.getDb client, lastcallback
+    @sdb = savedb.getDb client, lastcallback
 
   addActions: (actions) ->
     actionlist = if isArray actions then actions else [actions]
@@ -184,5 +188,5 @@ class Savegroupdb
             @addActions margs
 
 
-exports.getSaveGroupDb = (conn, lcb) ->
-  return new Savegroupdb(conn, lcb)
+exports.getDb = (conn, lcb, itransaction=null) ->
+  return new Savegroupdb(conn, lcb, itransaction)

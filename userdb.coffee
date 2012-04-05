@@ -5,10 +5,13 @@ isArray = `function (o) {
 
 
 class Userdb
-  constructor: (client, lastcallback) ->
+  constructor: (client, lastcallback, itransaction=null) ->
     @connection = client
     @lastcallback = lastcallback
-    @transaction=[]
+    if itransaction is null
+      @transaction=[]
+    else
+      @transaction=itransaction
 
   addActions: (actions) ->
     actionlist = if isArray actions then actions else [actions]
@@ -38,8 +41,6 @@ class Userdb
         callb err, reply
 
   insertUser = (payload, credential) ->
-    lcallb = if lcb then lcb else @lastcallback
-    callb = if cb then cb else @lastcallback
     cookie = credential.cookie
     #BUG defensive coding neaded below with SOAKS or automatic error throwing elsewhere.
     email=payload.email
@@ -68,9 +69,9 @@ class Userdb
     margs = margs.concat margs2
     @addActions margs
 
-  deleteUser = (payload, credenial) ->
+  deleteUser = (payload, credential) ->
     #no delete user yet. All kinds of pain about the users assets, just as in groups. BUG.
     null
 
-exports.getUserDb = (conn, lcb) ->
-  return new Userdb(conn, lcb)
+exports.getDb = (conn, lcb, itransaction=null) ->
+  return new Userdb(conn, lcb, itransaction)

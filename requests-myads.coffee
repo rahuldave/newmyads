@@ -79,6 +79,11 @@ httpcallbackmaker = (keyword, req, res, next)->
                 successfulRequest res, keyword: keyword, message: reply
             else
                 failedRequest res, keyword: keyword, message: 'undefined'
+
+#BUG above needs to be enhanced by a header dictionary and an options dictionary where i can pass in stuff
+#this will be useful in login and stuff but will require js client mods to get the canonical json returns
+#we provide. Along with errorhandling, we should quickly do canonical json returns.
+#(atleast for everything except savedb)
             
 consolecallbackmaker = () ->
     return (err, reply) ->

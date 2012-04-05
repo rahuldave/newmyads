@@ -6,10 +6,13 @@ isArray = `function (o) {
 };`
 
 class Groupdb
-  constructor: (client, lastcallback) ->
+  constructor: (client, lastcallback, itransaction=null) ->
     @connection = client
     @lastcallback = lastcallback
-    @transaction=[]
+    if itransaction is null
+      @transaction=[]
+    else
+      @transaction=itransaction
 
   addActions: (actions) ->
     actionlist = if isArray actions then actions else [actions]
@@ -311,6 +314,6 @@ class Groupdb
         
 
 
-exports.getGroupDb = (conn, lcb) ->
-  return new Groupdb(conn, lcb)
+exports.getDb = (conn, lcb, itransaction=null) ->
+  return new Groupdb(conn, lcb, itransaction)
 #exports.consolecallbackmaker=consolecallbackmaker

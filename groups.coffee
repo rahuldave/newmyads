@@ -25,7 +25,7 @@ createGroup = ({rawGroupName}, req, res, next) ->
   console.log __fname="createGroup:"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.create_group email, rawGroupName
     gdb.execute()
                      
@@ -38,7 +38,7 @@ addInvitationToGroup = ({fqGroupName, userNames}, req, res, next) ->
   console.log __fname="addInvitationToGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-      gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+      gdb=groupdb.getDb(CONNECTION, lastcb)
       gdb.add_invitation_to_group email, fqGroupName, userNames
       gdb.execute()
 
@@ -47,7 +47,7 @@ removeInvitationFromGroup = ({fqGroupName, userNames}, req, res, next) ->
   console.log __fname="removeUserFromGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-      gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+      gdb=groupdb.getDb(CONNECTION, lastcb)
       gdb.remove_invitation_from_group email, fqGroupName, userNames
       gdb.execute()
         
@@ -57,7 +57,7 @@ acceptInvitationToGroup = ({fqGroupName}, req, res, next) ->
   console.log __fname="acceptInvitationToGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) -> 
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.accept_invitation_to_group email, fqGroupName
     gdb.execute()
 
@@ -67,7 +67,7 @@ declineInvitationToGroup = ({fqGroupName}, req, res, next) ->
     console.log __fname="declineInvitationToGroup"
     lastcb = httpcallbackmaker(__fname, req, res, next)
     ifHavePermissions req, res, lastcb, (email) -> 
-        gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+        gdb=groupdb.getDb(CONNECTION, lastcb)
         gdb.decline_invitation_to_group email, fqGroupName
         gdb.execute()
 #GET
@@ -75,7 +75,7 @@ pendingInvitationToGroups = (req, res, next) ->
   console.log __fname="pendingInvitationToGroups"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)  
+    gdb=groupdb.getDb(CONNECTION, lastcb)  
     gdb.pending_invitation_to_groups email
 
 #GET                    
@@ -83,7 +83,7 @@ memberOfGroups = (req, res, next) ->
   console.log __fname="memberOfGroups"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.member_of_groups email
     
 #GET                    
@@ -91,7 +91,7 @@ ownerOfGroups = (req, res, next) ->
   console.log __fname="ownerOfGroups"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.owner_of_groups email    
 #only owner of group can do this   params=groupname, username
 #BUG: currently not checking if any random people are being tried to be removed
@@ -104,7 +104,7 @@ removeUserFromGroup = ({fqGroupName, userNames}, req, res, next) ->
   console.log __fname="removeUserFromGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.remove_user_from_group email, fqGroupName, userNames
     gdb.execute()
 
@@ -116,7 +116,7 @@ changeOwnershipOfGroup = ({fqGroupName, newOwner}, req, res, next) ->
   console.log __fname="changeOwnershipOfGroup"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.change_ownership_of_group email, fqGroupName, newOwner
     gdb.execute()
         
@@ -131,7 +131,7 @@ removeOneselfFromGroup = ({fqGroupName}, req, res, next) ->
     console.log __fname="removeOneselfFromGroup"
     lastcb = httpcallbackmaker(__fname, req, res, next)
     ifHavePermissions req, res, lastcb, (email) ->
-        gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+        gdb=groupdb.getDb(CONNECTION, lastcb)
         gdb.remove_oneself_from_group email, fqGroupName
         gdb.execute()
               
@@ -156,7 +156,7 @@ deleteGroup = ({fqGroupName}, req, res, next) ->
   console.log __fname="deleteGroup:"
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (email) ->
-    gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+    gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.delete_group email, fqGroupName
     gdb.execute()
 
@@ -169,7 +169,7 @@ getMembersOfGroup = (req, res, next) ->
     console.log "wantedGroup", wantedGroup
     lastcb = httpcallbackmaker(__fname, req, res, next)
     ifHavePermissions req, res, lastcb, (email) ->
-      gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+      gdb=groupdb.getDb(CONNECTION, lastcb)
       gdb.get_members_of_group(email, wantedGroup)
 
 #GET currently let anyone get BUG later impose owner
@@ -180,7 +180,7 @@ getInvitationsToGroup = (req, res, next) ->
     console.log "wantedGroup", wantedGroup
     lastcb =  httpcallbackmaker(__fname, req, res, next)
     ifHavePermissions req, res, lastcb, (email) ->
-      gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+      gdb=groupdb.getDb(CONNECTION, lastcb)
       gdb.get_invitations_to_group email, wantedGroup
                  
 #GET
@@ -191,7 +191,7 @@ getGroupInfo = (req, res, next) ->
     console.log "wantedGroup", wantedGroup
     lastcb =  httpcallbackmaker(__fname, req, res, next)
     ifHavePermissions req, res, lastcb, (email) ->
-      gdb=groupdb.getGroupDb(CONNECTION, lastcb)
+      gdb=groupdb.getDb(CONNECTION, lastcb)
       gdb.get_group_info email, wantedGroup
         
 exports.createGroup=createGroup

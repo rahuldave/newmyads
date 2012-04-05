@@ -51,7 +51,7 @@ saveSearchesToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
-      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb = savegroupdb.getDb(CONNECTION, lastcb)
       sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'search'
       sgdb.execute()
 
@@ -61,7 +61,7 @@ savePubsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
-      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb = savegroupdb.getDb(CONNECTION, lastcb)
       sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'pub'
       sgdb.execute()
       
@@ -70,7 +70,7 @@ saveObsvsToGroup = ({fqGroupName, objectsToSave}, req, res, next) ->
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
-      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb = savegroupdb.getDb(CONNECTION, lastcb)
       sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, 'obsv'
       sgdb.execute()
             
@@ -83,7 +83,7 @@ saveItemsPublic = ({searchtype, objectsToSave}, req, res, next) ->
   #query.
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
       # keep as a multi even though now a single addition
-      sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+      sgdb = savegroupdb.getDb(CONNECTION, lastcb)
       sgdb.saveItemsToGroup authorizedEntity, fqGroupName, objectsToSave, searchtype
       sgdb.execute()
 
@@ -122,7 +122,7 @@ createSavedTemplates = (searchtype, nowDate, searchkeys, searchtimes, namearchet
   
 _getSavedItemsFromGroup = (authorizedEntity, groupname, searchtype, templateCreatorFunc, callback, augmenthash=null) ->
     nowDate = new Date().getTime()
-    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, callback)
+    sgdb = savegroupdb.getDb(CONNECTION, callback)
     if authorizedEntity is 'all'
       cfunc = sgdb.getSavedItemsForGroup
     else
@@ -189,7 +189,7 @@ getSavedBysForItemsInGroup = (req, res, next) ->
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+    sgdb = savegroupdb.getDb(CONNECTION, lastcb)
     sgdb.getSavedBysForItems fqGroupName, saveditems
 
 getGroupsSavedInForItemsAndUser = (req, res, next) ->
@@ -198,7 +198,7 @@ getGroupsSavedInForItemsAndUser = (req, res, next) ->
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+    sgdb = savegroupdb.getDb(CONNECTION, lastcb)
     sgdb.getGroupsSavedInForItemsAndUser authorizedEntity, searchtype, saveditems
     #lastcb will be automatically called on success, too, with the groups
 
@@ -209,13 +209,13 @@ getGroupsSavedInForItems = (req, res, next) ->
   saveditems = req.query.saveditems
   lastcb = httpcallbackmaker(__fname, req, res, next)
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
-    sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+    sgdb = savegroupdb.getDb(CONNECTION, lastcb)
     sgdb.getGroupsSavedInForItems authorizedEntity, searchtype, saveditems
     #lastcb will be automatically called on success, too, with the groups
 
 #BUG How about deletion from savedInGroups hash
 removeItemsFromGroup = (authorizedEntity, group, searchtype, searchids, lastcb) ->
-  sgdb = savegroupdb.getSaveGroupDb(CONNECTION, lastcb)
+  sgdb = savegroupdb.getDb(CONNECTION, lastcb)
   sgdb.removeItemsFromGroup authorizedEntity, group, searchtype, searchids
   sgdb.execute()
                     

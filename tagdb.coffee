@@ -17,13 +17,18 @@ lstorempty = (x) ->
     return [x]
 
 class Tagdb
-  constructor: (client, lastcallback) ->
+  constructor: (client, lastcallback, itransaction=null) ->
     @connection = client
     @lastcallback = lastcallback
-    @transaction=[]
-    @gdb = groupdb.getGroupDb client, lastcallback
-    @sdb = savedb.getSaveDb client, lastcallback
-    @sgdb = savegroupdb.getSaveGroupDb client, lastcallback
+    if itransaction is null
+      @transaction=[]
+    else
+      @transaction=itransaction
+    #@gdb = groupdb.getDb client, lastcallback
+    #BUG bottom depends on app so we have an inversion of calling here...better done by pub/sub
+    #or separate clien call or something?
+    @sdb = savedb.getDb client, lastcallback
+    #@sgdb = savegroupdb.getDb client, lastcallback
 
   addActions: (actions) ->
     actionlist = if isArray actions then actions else [actions]
@@ -252,5 +257,5 @@ removeItemsFromTag: (authorizedEntity, tagName, searchtype, searchids) ->
             margs = margs.concat margsi
           @addActions margs
 
-exports.getTagDb = (conn, lcb) ->
-  return new Tagdb(conn, lcb)
+exports.getDb = (conn, lcb, itransaction=null) ->
+  return new Tagdb(conn, lcb, itransaction)
