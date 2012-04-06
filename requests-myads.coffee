@@ -85,15 +85,15 @@ httpcallbackmaker = (keyword, req, res, next)->
 #we provide. Along with errorhandling, we should quickly do canonical json returns.
 #(atleast for everything except savedb)
             
-consolecallbackmaker = () ->
+consolecallbackmaker = (keyword) ->
     return (err, reply) ->
         if err
-            console.log 'ERROR', err
+            console.log '#{keyword}:ERROR', err
         else
             if reply
-                console.log 'SUCCESS', reply
+                console.log '#{keyword}:SUCCESS', reply
             else
-                console.log 'FAILURE', reply
+                console.log '#{keyword}:FAILURE', reply
         
 # Handle a POST request by collecting all the
 # data and then sending it to the callback

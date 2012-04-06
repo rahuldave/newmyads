@@ -40,7 +40,8 @@ makeLoginCookie = (cookiename,  cookievalue, days) ->
   return unique: cookievalue, cookie: cookie, expdateinsecs: secs
 
 loginUser = (req, res, next) ->
-  redirect = url.parse(req.url, true).query.redirect
+  #redirect = url.parse(req.url, true).query.redirect
+  redirect = req.query.redirect
   currentToken = connectutils.uid 16
   adsurl = "http://adsabs.harvard.edu/cgi-bin/nph-manage_account?man_cmd=login&man_url=#{redirect}"
   startupCookie = makeLoginCookie 'startupcookie', currentToken, 0.005

@@ -6,6 +6,8 @@ isArray = `function (o) {
 };`
 
 class Groupdb
+
+
   constructor: (client, lastcallback, itransaction=null) ->
     @connection = client
     @lastcallback = lastcallback
