@@ -12,13 +12,23 @@ a grab bag of functionality.
 # The return message is sent using the keyword value set
 # to the message value.
 
+
+_ = require 'underscore'
+
+errors = './errors'
+RETURNSTRINGS= errors.RETURNSTRINGS
+RETURNCODES = errors.RETURNCODES
+
 completeRequest = (res, options, defoptions) ->
   console.log "In completeRequest", options
   opts = {}
+  #_.extend defoptions, options
   for key, defval of defoptions
     opts[key] = if key of options then options[key] else defval
-
-  res.writeHead 200, "OK", 'Content-Type': 'application/json'
+  #An Error must have an explicit response code  
+  responseCode = opts.RETURNCODE ? RETURNCODES.INTERNAL_ERROR
+  responseString = RETURNSTRINGS[responseCode] ? "No Response String Specified"
+  res.writeHead responseCode, responseString, 'Content-Type': 'application/json'
   out = {}
   out[opts.keyword] = opts.message
   out.status = opts.status
@@ -35,11 +45,13 @@ completeRequest = (res, options, defoptions) ->
 #      keyword, defaults to 'success'
 #      message, defaults to 'undefined'
 
+#We'll assume this is generally of a 400. Other errors must be explicitly mentioned
 failedRequest = (res, options = {}) ->
   completeRequest res, options,
-    keyword: 'FAILURE'
+    keyword: 'failedRequest'
     message: 'undefined'
     status: 'FAILURE'
+    RETURNCODE: RETURNCODES.BAD_REQUEST
 
 # The request succeeded.
 #
@@ -50,9 +62,10 @@ failedRequest = (res, options = {}) ->
 
 successfulRequest = (res, options = {}) ->
   completeRequest res, options,
-    keyword: 'SUCCESS'
+    keyword: 'successfulRequest'
     message: 'defined'
     status: 'SUCCESS'
+    RETURNCODE: RETURNCODES.OK
 
 # Call cb with the login cookie otherwise return
 # a failed request with failopts.
@@ -71,14 +84,20 @@ ifLoggedIn = (req, res, cb, failopts = {}) ->
 # this has an undefined error mode. Returns from flasy values may do this too
 #this is the 0 style returns redis sometimes gets TODO make sure this is ok, and failedrequest is getting ok options  
 httpcallbackmaker = (keyword, req, res, next)->
-    return (err, reply)->
+    return (err, reply, mergedict={})->
         if err
-            failedRequest res, keyword: keyword, message: err
+          options = keyword: keyword, message: err
+          _.extend options, mergedict
+          failedRequest res, options
         else
-            if reply
-                successfulRequest res, keyword: keyword, message: reply
-            else
-                failedRequest res, keyword: keyword, message: 'undefined'
+          if reply
+            options = keyword: keyword, message: reply
+            _.extend options, mergedict
+            successfulRequest res, options
+          else
+            options = keyword: keyword, message: 'reply is undefined or null'
+            _.extend options, mergedict
+            failedRequest res, options
 
 #BUG above needs to be enhanced by a header dictionary and an options dictionary where i can pass in stuff
 #this will be useful in login and stuff but will require js client mods to get the canonical json returns
@@ -124,6 +143,8 @@ postHandlerWithJSON = (req, res, cb) ->
 
   return true
 
+
+
 exports.completeRequest = completeRequest
 exports.failedRequest = failedRequest
 exports.successfulRequest = successfulRequest
@@ -133,3 +154,4 @@ exports.postHandler = postHandler
 exports.postHandlerWithJSON = postHandlerWithJSON
 exports.consolecallbackmaker=consolecallbackmaker
 exports.httpcallbackmaker=httpcallbackmaker
+exports.ERRORS = ERRORS

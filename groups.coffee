@@ -2,6 +2,9 @@ requests = require("./requests-myads")
 failedRequest = requests.failedRequest
 successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
+errors = './errors'
+RETURNSTRINGS= errors.RETURNSTRINGS
+RETURNCODES = errors.RETURNCODES
 
 httpcallbackmaker = requests.httpcallbackmaker
 #consolecallbackmaker=requests.consolecallbackmaker

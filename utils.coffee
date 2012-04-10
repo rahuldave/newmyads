@@ -9,6 +9,10 @@ failedRequest = requests.failedRequest
 successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
 httpcallbackmaker = requests.httpcallbackmaker
+errors = './errors'
+RETURNSTRINGS= errors.RETURNSTRINGS
+RETURNCODES = errors.RETURNCODES
+
 
 #again null response is treated as error below. not sure this is right
 #TODO: ecb ought to have a proper message.
@@ -44,12 +48,14 @@ ifHavePermissions = (req, res, ecb, cb) ->
     redis_client.get "email:#{loginid}", (err, email) ->
         console.log "email is", email, err
         if err
-            return ecb err, email
+            return ecb err, email, RETURNCODE: RETURNCODES.UNAUTHORIZED
         #Philosophy: a null result is treated as an error
         if email
             return cb email
         else
-            return ecb err, email
+            return ecb err, email, 
+              RETURNCODE: RETURNCODES.UNAUTHORIZED
+              message: "A search for #{email} returned nothing"
 
 searchToText = (searchTerm) ->
     # lazy way to remove the trailing search term

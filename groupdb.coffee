@@ -1,4 +1,6 @@
-
+errors = './errors'
+RETURNSTRINGS= errors.RETURNSTRINGS
+RETURNCODES = errors.RETURNCODES
 #@connection = require("redis").createClient()
 isArray = `function (o) {
     return (o instanceof Array) ||
@@ -53,7 +55,7 @@ class Groupdb
   #you have to be added by somebody else to a group    
   #add another users comma seperated emails to the invitation set param=emails
   #TODO: no retraction of invitation as yet
-
+  #Need to distinguish between group found or not found
   add_invitation_to_group: (email, fqGroupName, userNames, lcb=null)->
     changeTime = new Date().getTime()
     lcallb = if lcb then lcb else @lastcallback
@@ -65,7 +67,7 @@ class Groupdb
         margs=margs1.concat margs2
         @addActions margs
       else
-        return lcallb "ERROR: Not owner of Group", null
+        return lcallb "ERROR: Not owner of Group", null, RETURNCODE: RETURNCODES.UNAUTHORIZED
 
   remove_invitation_from_group: (email, fqGroupName, userNames, lcb=null) ->
     changeTime = new Date().getTime()
@@ -78,7 +80,7 @@ class Groupdb
         margs=margs1.concat margs2
         @addActions margs
       else
-        return lcallb "ERROR: Not owner of Group", null
+        return lcallb "ERROR: Not owner of Group", null, RETURNCODE: RETURNCODES.UNAUTHORIZED
         
 
   accept_invitation_to_group: (email, fqGroupName, lcb=null) ->
@@ -94,7 +96,7 @@ class Groupdb
         ]
         @addActions margs
       else
-        return lcallb "ERROR: Not invited to this group", null
+        return lcallb "ERROR: Not invited to this group", null, RETURNCODE: RETURNCODES.UNAUTHORIZED
 
 
   decline_invitation_to_group: (email, fqGroupName, lcb=null) ->
@@ -109,7 +111,7 @@ class Groupdb
         ]
         @addActions margs
       else
-        return lcallb "ERROR: Not invited to this group", null
+        return lcallb "ERROR: Not invited to this group", null, RETURNCODE: RETURNCODES.UNAUTHORIZED
 
   #GET
   pending_invitation_to_groups: (email, cb=null, lcb=null) -> 
