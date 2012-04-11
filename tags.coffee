@@ -144,7 +144,7 @@ getAllTagsForUser = (req, res, next) ->
   searchtype=req.query.searchtype ? null
   ifHavePermissions req, res, lastcb, (authorizedEntity) ->
     tdb = tagdb.getDb(CONNECTION, callback)
-      tdb.getAllTagsForUser authorizedEntity, searchtype
+    tdb.getAllTagsForUser authorizedEntity, searchtype
 
 #also the thing that gets tags for an app        
 getAllTagsForType= (req, res, next) ->

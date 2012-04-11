@@ -19,6 +19,8 @@ successfulRequest = requests.successfulRequest
 ifLoggedIn = requests.ifLoggedIn
 postHandler = requests.postHandler
 postHandlerWithJSON = requests.postHandlerWithJSON
+doPost = requests.doPost
+doPostWithJSON = requests.doPostWithJSON
 
 
 user = require "./user"
@@ -37,11 +39,7 @@ addUser = (req, res, next) ->
   console.log "::addToRedis cookies=#{JSON.stringify req.cookies}"
   postHandler req, res, user.insertUser
 
-doPost = (func) ->
-  (req, res, next) -> postHandler req, res, func
 
-doPostWithJSON = (func) ->
-  (req, res, next) -> postHandlerWithJSON req, res, func
 # Proxy the call to ADS, setting up the NASA_ADS_ID cookie
 
 

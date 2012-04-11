@@ -27,6 +27,7 @@ searchToText = utils.searchToText
 createGroup = ({rawGroupName}, req, res, next) ->
   console.log __fname="createGroup:"
   lastcb = httpcallbackmaker(__fname, req, res, next)
+  #validation=utils.validator({rawGroupName:s},{rawGroupName})
   ifHavePermissions req, res, lastcb, (email) ->
     gdb=groupdb.getDb(CONNECTION, lastcb)
     gdb.create_group email, rawGroupName

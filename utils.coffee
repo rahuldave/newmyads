@@ -13,6 +13,16 @@ errors = './errors'
 RETURNSTRINGS= errors.RETURNSTRINGS
 RETURNCODES = errors.RETURNCODES
 
+#validator assumes a spec dictionary {var: type and check for existence of type}
+validator = (spec, valsdict) ->
+  for key, value of spec
+    console.log key, value, valsdict[key], typeof valsdict[key]
+    datype = typeof valsdict[key]
+    if not valsdict[key]?
+      return false
+    if datype is not value
+      return false
+  return true
 
 #again null response is treated as error below. not sure this is right
 #TODO: ecb ought to have a proper message.
@@ -172,6 +182,7 @@ getSortedElementsAndScores = (flag, key, cb) ->
       else
         redis_client.zrevrange key, 0, nelem, "withscores", splitIt
 
+exports.validator = validator
 exports.ifHaveEmail = ifHaveEmail
 exports.ifHaveAuth = ifHaveAuth
 exports.ifHavePermissions = ifHavePermissions

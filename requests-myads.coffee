@@ -143,7 +143,11 @@ postHandlerWithJSON = (req, res, cb) ->
 
   return true
 
+doPost = (func) ->
+  (req, res, next) -> postHandler req, res, func
 
+doPostWithJSON = (func) ->
+  (req, res, next) -> postHandlerWithJSON req, res, func
 
 exports.completeRequest = completeRequest
 exports.failedRequest = failedRequest
@@ -152,6 +156,8 @@ exports.ifLoggedIn = ifLoggedIn
 
 exports.postHandler = postHandler
 exports.postHandlerWithJSON = postHandlerWithJSON
+
+exports.doPost = doPost
+exports.doPostWithJSON = doPostWithJSON
 exports.consolecallbackmaker=consolecallbackmaker
 exports.httpcallbackmaker=httpcallbackmaker
-exports.ERRORS = ERRORS
